@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v0.1)'
+        required: false
+        default: 'v0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux (.deb & .tar.gz)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential dpkg-dev
+
+      - name: Determine version tag
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile || pnpm install
+
+      - name: Package Debian (.deb)
+        run: |
+          chmod +x scripts/build_deb.sh
+          ./scripts/build_deb.sh "${{ steps.vars.outputs.version }}"
+
+      - name: Package Tarball (.tar.gz)
+        run: |
+          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64
+          cp backend/typex_server dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/
+          cp -r backend/data dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/
+          if [ -d frontend/out ]; then
+            cp -r frontend/out dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/web
+          fi
+          cd dist
+          tar -czf typex-${{ steps.vars.outputs.tag }}-linux-x86_64.tar.gz typex-${{ steps.vars.outputs.tag }}-linux-x86_64
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            dist/*.deb
+            dist/*.tar.gz
+
+  build-windows:
+    name: Build Windows (.exe & .zip)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install MinGW cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 zip
+
+      - name: Determine version tag
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Compile Windows C++ Server (.exe)
+        run: |
+          x86_64-w64-mingw32-g++ -std=c++17 -O3 -pthread backend/main.cpp \
+            -Ibackend/include \
+            -lws2_32 -liphlpapi -static \
+            -o backend/typex_server.exe
+          x86_64-w64-mingw32-strip --strip-unneeded backend/typex_server.exe
+
+      - name: Build frontend static distribution
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile || pnpm install
+          pnpm exec next build
+
+      - name: Package Windows Bundle (.zip)
+        run: |
+          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64
+          cp backend/typex_server.exe dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/
+          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data
+          cp backend/data/*.txt dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data/
+          if [ -f backend/data/WORDLISTS.md ]; then
+            cp backend/data/WORDLISTS.md dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data/
+          fi
+          if [ -d frontend/out ]; then
+            mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/web
+            cp -r frontend/out/* dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/web/
+          fi
+          # Create convenient startup batch script
+          cat << 'EOF' > dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/start.bat
+          @echo off
+          title TypeX Engine
+          echo Starting TypeX Native Server on port 8080...
+          start "" typex_server.exe 8080
+          echo Opening TypeX in default browser...
+          start http://localhost:8080
+          EOF
+          cd dist
+          zip -r typex-${{ steps.vars.outputs.tag }}-windows-x64.zip typex-${{ steps.vars.outputs.tag }}-windows-x64
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist/*.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Inspect release assets
+        run: |
+          ls -lh release-assets/
+
+      - name: Determine release tag
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: "TypeX ${{ steps.vars.outputs.tag }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

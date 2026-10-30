@@ -1,0 +1,26 @@
+# Build outputs
+build/
+dist/
+*.deb
+*.tar.gz
+*.zip
+*.exe
+
+# Compiled binaries
+backend/typex_server
+backend/typex_server_test
+desktop_shell/typex-app
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Persistent local data & backups
+backend/data/backups/
+backend/data/mastery_profile.json
+backend/data/admin_pin.json
+artifacts/screenshots/
+.freebuff/
+.DS_Store
