@@ -412,9 +412,6 @@ export default function Home() {
         isOpen={firstRunNeeded}
         onClose={() => {}}
       />
-
-      {/* Footer */}
-      <Footer isFocusMode={showFocusFade} />
     </main>
   );
 }
