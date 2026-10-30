@@ -37,6 +37,7 @@ if [ ! -f "$ROOT_DIR/backend/sqlite3.o" ]; then
 fi
 g++ -std=c++17 -O3 -pthread "$ROOT_DIR/backend/main.cpp" "$ROOT_DIR/backend/sqlite3.o" -I"$ROOT_DIR/backend/include" -ldl -o "$STAGE_DIR/usr/lib/typex/typex-server"
 strip --strip-unneeded "$STAGE_DIR/usr/lib/typex/typex-server"
+cp "$STAGE_DIR/usr/lib/typex/typex-server" "$ROOT_DIR/backend/typex_server"
 
 # 3. Build native desktop shell binary
 echo "[+] Compiling C++ native desktop shell..."
