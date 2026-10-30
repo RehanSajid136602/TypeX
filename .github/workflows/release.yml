@@ -95,10 +95,10 @@ jobs:
         with:
           version: 9
 
-      - name: Install MinGW cross-compiler
+      - name: Install MinGW cross-compiler & NSIS
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 zip
+          sudo apt-get install -y mingw-w64 nsis zip
 
       - name: Determine version tag
         id: vars
@@ -110,13 +110,14 @@ jobs:
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
-      - name: Compile Windows C++ Server (.exe)
+      - name: Compile Windows C++ Server (.exe) with SQLite
         run: |
-          x86_64-w64-mingw32-g++ -std=c++17 -O3 -pthread backend/main.cpp \
+          x86_64-w64-mingw32-gcc -O3 -pthread -c backend/include/sqlite3.c -o backend/sqlite3_win.o
+          x86_64-w64-mingw32-g++ -std=c++17 -O3 -pthread backend/main.cpp backend/sqlite3_win.o \
             -Ibackend/include \
             -lws2_32 -liphlpapi -static \
-            -o backend/typex_server.exe
-          x86_64-w64-mingw32-strip --strip-unneeded backend/typex_server.exe
+            -o backend/TypeX.exe
+          x86_64-w64-mingw32-strip --strip-unneeded backend/TypeX.exe
 
       - name: Build frontend static distribution
         run: |
@@ -124,10 +125,10 @@ jobs:
           pnpm install --frozen-lockfile || pnpm install
           pnpm exec next build
 
-      - name: Package Windows Bundle (.zip)
+      - name: Package Windows Bundle (.zip & NSIS .exe installer)
         run: |
           mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64
-          cp backend/typex_server.exe dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/
+          cp backend/TypeX.exe dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/
           mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data
           cp backend/data/*.txt dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data/
           if [ -f backend/data/WORDLISTS.md ]; then
@@ -142,18 +143,29 @@ jobs:
           @echo off
           title TypeX Engine
           echo Starting TypeX Native Server on port 8080...
-          start "" typex_server.exe 8080
+          start "" TypeX.exe 8080
           echo Opening TypeX in default browser...
           start http://localhost:8080
           EOF
           cd dist
           zip -r typex-${{ steps.vars.outputs.tag }}-windows-x64.zip typex-${{ steps.vars.outputs.tag }}-windows-x64
+          
+          # Build NSIS installer
+          mkdir -p ../build/windows/dist_win
+          cp -r typex-${{ steps.vars.outputs.tag }}-windows-x64/* ../build/windows/dist_win/
+          cd ../build/windows
+          makensis -DPRODUCT_VERSION="${{ steps.vars.outputs.tag }}" installer.nsi || true
+          if [ -f TypeX-Setup.exe ]; then
+            cp TypeX-Setup.exe ../../dist/typex-${{ steps.vars.outputs.tag }}-windows-x64-setup.exe
+          fi
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
 
   publish-release:
     name: Publish GitHub Release

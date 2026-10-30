@@ -32,7 +32,10 @@ mkdir -p "$STAGE_DIR/usr/share/icons/hicolor/scalable/apps"
 
 # 2. Build backend binary in Release mode (-O3)
 echo "[+] Compiling C++ backend binary in Release mode..."
-g++ -std=c++17 -O3 -pthread "$ROOT_DIR/backend/main.cpp" -I"$ROOT_DIR/backend/include" -o "$STAGE_DIR/usr/lib/typex/typex-server"
+if [ ! -f "$ROOT_DIR/backend/sqlite3.o" ]; then
+  gcc -O3 -pthread -c "$ROOT_DIR/backend/include/sqlite3.c" -o "$ROOT_DIR/backend/sqlite3.o"
+fi
+g++ -std=c++17 -O3 -pthread "$ROOT_DIR/backend/main.cpp" "$ROOT_DIR/backend/sqlite3.o" -I"$ROOT_DIR/backend/include" -ldl -o "$STAGE_DIR/usr/lib/typex/typex-server"
 strip --strip-unneeded "$STAGE_DIR/usr/lib/typex/typex-server"
 
 # 3. Build native desktop shell binary
@@ -87,7 +90,7 @@ Exec=typex %U
 Icon=typex
 Terminal=false
 Type=Application
-Categories=Utility;Education;
+Categories=Utility;
 StartupWMClass=typex-app
 Keywords=typing;wpm;benchmark;competition;
 DESKTOP

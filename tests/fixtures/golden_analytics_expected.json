@@ -1,0 +1,2977 @@
+{
+  "datasetSize": 42,
+  "modesCount": 3,
+  "tzOffsets": [
+    -300,
+    0,
+    480
+  ],
+  "overview": {
+    "totalTests": 42,
+    "personalBestWpm": 127.0,
+    "avgLast10NetWpm": 118.0,
+    "totalDurationSeconds": 1330,
+    "pooledAccuracy": 95.8,
+    "meanOfPercentages": 93.2,
+    "longestStreak": 5
+  },
+  "dailyBuckets": {
+    "2026-05-01": 9,
+    "2026-05-02": 9,
+    "2026-05-03": 9,
+    "2026-05-04": 9,
+    "2026-05-05": 6
+  },
+  "keyStats": {
+    "e": {
+      "attempts": 1260,
+      "errors": 126,
+      "errorRate": 10.0,
+      "avgFlightMs": 50.0,
+      "meetsThreshold": true
+    },
+    "t": {
+      "attempts": 840,
+      "errors": 84,
+      "errorRate": 10.0,
+      "avgFlightMs": 60.0,
+      "meetsThreshold": true
+    },
+    "q": {
+      "attempts": 3,
+      "errors": 3,
+      "errorRate": 100.0,
+      "avgFlightMs": 100.0,
+      "meetsThreshold": false
+    }
+  },
+  "topConfusions": [
+    {
+      "expected": "e",
+      "typed": "r",
+      "count": 84
+    },
+    {
+      "expected": "t",
+      "typed": "y",
+      "count": 42
+    }
+  ],
+  "mostMistypedWords": [
+    {
+      "word": "the",
+      "count": 84
+    },
+    {
+      "word": "quick",
+      "count": 42
+    }
+  ],
+  "tests": [
+    {
+      "id": 1,
+      "startedAt": 1777629600000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 45.0,
+      "rawWpm": 50.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0,
+        45.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ],
+        [
+          "q",
+          3,
+          3,
+          300,
+          3
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "startedAt": 1777633200000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 47.0,
+      "rawWpm": 52.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0,
+        47.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "startedAt": 1777636800000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 49.0,
+      "rawWpm": 54.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 4,
+      "startedAt": 1777640400000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 51.0,
+      "rawWpm": 56.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0,
+        51.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 5,
+      "startedAt": 1777644000000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 53.0,
+      "rawWpm": 58.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0,
+        53.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 6,
+      "startedAt": 1777647600000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 55.0,
+      "rawWpm": 60.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0,
+        55.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 7,
+      "startedAt": 1777651200000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 57.0,
+      "rawWpm": 62.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0,
+        57.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 8,
+      "startedAt": 1777654800000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 59.0,
+      "rawWpm": 64.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0,
+        59.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 9,
+      "startedAt": 1777658400000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 61.0,
+      "rawWpm": 66.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0,
+        61.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 10,
+      "startedAt": 1777716000000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 63.0,
+      "rawWpm": 68.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0,
+        63.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 11,
+      "startedAt": 1777719600000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 65.0,
+      "rawWpm": 70.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0,
+        65.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 12,
+      "startedAt": 1777723200000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 67.0,
+      "rawWpm": 72.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0,
+        67.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 13,
+      "startedAt": 1777726800000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 69.0,
+      "rawWpm": 74.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0,
+        69.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 14,
+      "startedAt": 1777730400000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 71.0,
+      "rawWpm": 76.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0,
+        71.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 15,
+      "startedAt": 1777734000000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 73.0,
+      "rawWpm": 78.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0,
+        73.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 16,
+      "startedAt": 1777737600000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 75.0,
+      "rawWpm": 80.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0,
+        75.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 17,
+      "startedAt": 1777741200000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 77.0,
+      "rawWpm": 82.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0,
+        77.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 18,
+      "startedAt": 1777744800000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 79.0,
+      "rawWpm": 84.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0,
+        79.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 19,
+      "startedAt": 1777802400000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 81.0,
+      "rawWpm": 86.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0,
+        81.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 20,
+      "startedAt": 1777806000000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 83.0,
+      "rawWpm": 88.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0,
+        83.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 21,
+      "startedAt": 1777809600000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 85.0,
+      "rawWpm": 90.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0,
+        85.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 22,
+      "startedAt": 1777813200000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 87.0,
+      "rawWpm": 92.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0,
+        87.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 23,
+      "startedAt": 1777816800000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 89.0,
+      "rawWpm": 94.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0,
+        89.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 24,
+      "startedAt": 1777820400000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 91.0,
+      "rawWpm": 96.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0,
+        91.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 25,
+      "startedAt": 1777824000000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 93.0,
+      "rawWpm": 98.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0,
+        93.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 26,
+      "startedAt": 1777833000000,
+      "tzOffsetMin": -300,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 95.0,
+      "rawWpm": 100.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0,
+        95.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 27,
+      "startedAt": 1777831200000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 97.0,
+      "rawWpm": 102.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0,
+        97.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 28,
+      "startedAt": 1777888800000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 99.0,
+      "rawWpm": 104.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0,
+        99.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 29,
+      "startedAt": 1777892400000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 101.0,
+      "rawWpm": 106.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0,
+        101.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 30,
+      "startedAt": 1777896000000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 103.0,
+      "rawWpm": 108.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0,
+        103.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 31,
+      "startedAt": 1777899600000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 105.0,
+      "rawWpm": 110.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0,
+        105.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 32,
+      "startedAt": 1777903200000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 107.0,
+      "rawWpm": 112.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0,
+        107.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 33,
+      "startedAt": 1777906800000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 109.0,
+      "rawWpm": 114.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0,
+        109.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 34,
+      "startedAt": 1777910400000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 111.0,
+      "rawWpm": 116.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0,
+        111.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 35,
+      "startedAt": 1777914000000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 113.0,
+      "rawWpm": 118.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0,
+        113.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 36,
+      "startedAt": 1777917600000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 115.0,
+      "rawWpm": 120.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0,
+        115.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 37,
+      "startedAt": 1777975200000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 117.0,
+      "rawWpm": 122.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0,
+        117.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 38,
+      "startedAt": 1777978800000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 119.0,
+      "rawWpm": 124.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0,
+        119.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 39,
+      "startedAt": 1777982400000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 121.0,
+      "rawWpm": 126.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0,
+        121.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 40,
+      "startedAt": 1777986000000,
+      "tzOffsetMin": -300,
+      "mode": "time",
+      "config": "{\"timeOption\": \"30\"}",
+      "durationMs": 30000,
+      "netWpm": 123.0,
+      "rawWpm": 128.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0,
+        123.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 41,
+      "startedAt": 1777989600000,
+      "tzOffsetMin": 0,
+      "mode": "words",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 25000,
+      "netWpm": 125.0,
+      "rawWpm": 130.0,
+      "accuracy": 97.5,
+      "consistency": 92.5,
+      "correctChars": 392,
+      "incorrectChars": 8,
+      "extraChars": 0,
+      "uncorrectedErrors": 8,
+      "correctedErrors": 4,
+      "totalKeystrokes": 400,
+      "perSecondWpm": [
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0,
+        125.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    },
+    {
+      "id": 42,
+      "startedAt": 1777993200000,
+      "tzOffsetMin": 480,
+      "mode": "learn",
+      "config": "{\"timeOption\": \"words\"}",
+      "durationMs": 40000,
+      "netWpm": 127.0,
+      "rawWpm": 132.0,
+      "accuracy": 89.0,
+      "consistency": 92.5,
+      "correctChars": 90,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "uncorrectedErrors": 10,
+      "correctedErrors": 2,
+      "totalKeystrokes": 100,
+      "perSecondWpm": [
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0,
+        127.0
+      ],
+      "appVersion": "1.0.0",
+      "keyStats": [
+        [
+          "e",
+          30,
+          3,
+          1500,
+          30
+        ],
+        [
+          "t",
+          20,
+          2,
+          1200,
+          20
+        ]
+      ],
+      "confusions": [
+        [
+          "e",
+          "r",
+          2
+        ],
+        [
+          "t",
+          "y",
+          1
+        ]
+      ],
+      "wordErrors": [
+        [
+          "the",
+          2
+        ],
+        [
+          "quick",
+          1
+        ]
+      ]
+    }
+  ]
+}

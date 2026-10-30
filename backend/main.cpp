@@ -29,6 +29,7 @@
 #include "learning_engine.hpp"
 #include "competition_engine.hpp"
 #include "admin_pin_manager.hpp"
+#include "db_manager.hpp"
 
 using json = nlohmann::json;
 
@@ -221,6 +222,15 @@ std::vector<std::string> getLanIpAddresses() {
     return ips;
 }
 
+std::string generateSessionToken() {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dis;
+    std::stringstream ss;
+    ss << std::hex << dis(gen) << dis(gen);
+    return ss.str();
+}
+
 }  // namespace
 
 class WordCorpus {
@@ -324,7 +334,12 @@ public:
 
     // natural = rank-decay weighted (resembles real prose frequency)
     // uniform = every entry in the tier equally likely (raw vocabulary test)
-    std::vector<std::string> sampleWords(const std::string& tier, size_t count, bool natural) const {
+    std::vector<std::string> sampleWords(
+        const std::string& tier,
+        size_t count,
+        bool natural,
+        const std::vector<std::string>& initialRecent = {}
+    ) const {
         const TierList* list = findTier(tier);
         if (!list || list->words.empty() || count == 0) return {};
 
@@ -332,40 +347,43 @@ public:
 
         static thread_local std::mt19937 gen{std::random_device{}()};
         std::uniform_int_distribution<size_t> uniformDist(0, n - 1);
-        // Built per call: std::discrete_distribution::operator() is non-const,
-        // so sharing one instance across httplib worker threads would race.
         std::discrete_distribution<size_t> weightedDist(list->weights.begin(), list->weights.end());
 
-        // Sliding-window anti-repetition guard: K = min(10, 20% of tier size).
-        // This keeps back-to-back repeats out even when the request is larger
-        // than the tier. When the request fits inside the tier we additionally
-        // draw without replacement, so a 25- or 50-word test never contains the
-        // same word twice.
-        size_t window = std::min<size_t>(10, static_cast<size_t>(static_cast<double>(n) * 0.2));
+        // Anti-repetition sliding window: strictly at least 20 words (or up to n-1 if tier has < 21 words).
+        // This ensures no repeat of the same word within the last 20 words, and never two identical neighboring words.
+        size_t window = 20;
         if (window >= n) window = (n > 1) ? n - 1 : 0;
 
         const bool withoutReplacement = (count <= n);
         std::deque<std::string> recent;
+        for (const auto& w : initialRecent) {
+            recent.push_back(w);
+            while (recent.size() > window) recent.pop_front();
+        }
+
         std::unordered_set<std::string> chosen;
         std::vector<std::string> result;
         result.reserve(count);
 
         for (size_t i = 0; i < count; ++i) {
             std::string word;
-            for (int attempt = 0; attempt < 10; ++attempt) {
+            for (int attempt = 0; attempt < 30; ++attempt) {
                 size_t idx = natural ? weightedDist(gen) : uniformDist(gen);
                 word = list->words[idx];
                 const bool inWindow = std::find(recent.begin(), recent.end(), word) != recent.end();
                 const bool alreadyUsed = withoutReplacement && chosen.count(word) > 0;
-                if (!inWindow && !alreadyUsed) break;
+                const bool sameAsPrev = !result.empty() && result.back() == word;
+                if (!inWindow && !alreadyUsed && !sameAsPrev) break;
             }
 
-            // Near tier exhaustion re-rolls can starve; fall back to a bounded
-            // scan for any unused entry so termination is guaranteed.
-            if (withoutReplacement && chosen.count(word) > 0) {
+            // Fallback scan if random re-rolls starved
+            if ((!result.empty() && result.back() == word) || (withoutReplacement && chosen.count(word) > 0)) {
                 for (size_t probe = 0; probe < n; ++probe) {
                     const std::string& candidate = list->words[(i + probe) % n];
-                    if (chosen.count(candidate) == 0) {
+                    const bool inWindow = std::find(recent.begin(), recent.end(), candidate) != recent.end();
+                    const bool alreadyUsed = withoutReplacement && chosen.count(candidate) > 0;
+                    const bool sameAsPrev = !result.empty() && result.back() == candidate;
+                    if (!sameAsPrev && (!withoutReplacement || !alreadyUsed) && (!inWindow || candidate != word)) {
                         word = candidate;
                         break;
                     }
@@ -381,6 +399,12 @@ public:
         }
 
         return result;
+    }
+
+    bool isWordInTier(const std::string& tier, const std::string& word) const {
+        const TierList* list = findTier(tier);
+        if (!list) return false;
+        return std::find(list->words.begin(), list->words.end(), word) != list->words.end();
     }
 
 private:
@@ -403,14 +427,16 @@ private:
 
 int main(int argc, char** argv) {
     int port = 8080;
-    std::string host = "127.0.0.1";
+    std::string host = "0.0.0.0";
     std::string explicitDataDir = "";
     std::string explicitWordsDir = "";
     std::string explicitWebDir = "";
+    std::string sessionToken = "";
 
     // Parse CLI arguments:
     // --port <port>
     // --host <127.0.0.1|0.0.0.0>
+    // --session-token <token>
     // --data-dir <path>
     // --wordlists-dir <path>
     // --web-dir <path>
@@ -420,6 +446,8 @@ int main(int argc, char** argv) {
             try { port = std::stoi(argv[++i]); } catch (...) {}
         } else if ((arg == "--host" || arg == "-h") && i + 1 < argc) {
             host = argv[++i];
+        } else if (arg == "--session-token" && i + 1 < argc) {
+            sessionToken = argv[++i];
         } else if (arg == "--data-dir" && i + 1 < argc) {
             explicitDataDir = argv[++i];
         } else if (arg == "--wordlists-dir" && i + 1 < argc) {
@@ -429,6 +457,13 @@ int main(int argc, char** argv) {
         } else if (i == 1 && arg[0] != '-') {
             try { port = std::stoi(arg); } catch (...) {}
         }
+    }
+
+    if (const char* tokenEnv = std::getenv("TYPEX_SESSION_TOKEN")) {
+        sessionToken = tokenEnv;
+    }
+    if (sessionToken.empty()) {
+        sessionToken = generateSessionToken();
     }
 
     if (const char* portEnv = std::getenv("PORT")) {
@@ -463,8 +498,50 @@ int main(int argc, char** argv) {
     const std::string pinFilePath = writableDataDir + "/admin_pin.json";
     typex::AdminPinManager pinManager(pinFilePath);
 
+    const std::string dbFilePath = writableDataDir + "/typex.db";
+    typex::DatabaseManager dbManager(dbFilePath);
+
+    // Verify database integrity on startup
+    std::string integrityMsg;
+    if (!dbManager.runIntegrityCheck(integrityMsg)) {
+        std::cerr << "[ALERT] Database integrity check failed: " << integrityMsg << std::endl;
+        if (dbManager.restoreNewestBackup()) {
+            std::cout << "[INFO] Successfully restored database from newest backup." << std::endl;
+        } else {
+            std::cerr << "[WARN] No valid database backup found to restore." << std::endl;
+        }
+    } else {
+        std::cout << "[INFO] SQLite database integrity check passed: " << integrityMsg << std::endl;
+    }
+
+    // Daily automatic backup keeping last 7
+    std::string createdBackup;
+    if (dbManager.createBackup(createdBackup)) {
+        std::cout << "[INFO] Daily online database backup created: " << createdBackup << std::endl;
+    }
+
     const std::string profilePath = writableDataDir + "/mastery_profile.json";
     typex::MasteryEngine masteryEngine(profilePath);
+
+    // If legacy mastery_profile.json existed and an active profile exists without a mastery profile, import it
+    json profilesList = dbManager.listProfiles();
+    if (std::filesystem::exists(profilePath) && !profilesList.empty()) {
+        json legacyJson;
+        try {
+            std::ifstream lf(profilePath);
+            if (lf.is_open()) {
+                legacyJson = json::parse(lf);
+            }
+        } catch (...) {}
+
+        if (legacyJson.is_object() && !legacyJson.empty()) {
+            int64_t targetProfileId = profilesList[0]["id"].get<int64_t>();
+            if (targetProfileId > 0 && dbManager.getMasteryProfile(targetProfileId) == nullptr) {
+                dbManager.saveMasteryProfile(targetProfileId, legacyJson);
+                std::cout << "[INFO] Imported legacy mastery_profile.json into profile #" << targetProfileId << std::endl;
+            }
+        }
+    }
 
     const std::string competitionStatePath = writableDataDir + "/competition_state.json";
     typex::CompetitionEngine competitionEngine(competitionStatePath, &pinManager);
@@ -477,18 +554,63 @@ int main(int argc, char** argv) {
         std::cout << "[INFO] Mounted static web assets from " << webDir << std::endl;
     }
 
-    // Set default CORS headers on every response
-    svr.set_default_headers({
-        {"Access-Control-Allow-Origin", "*"},
-        {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
-        {"Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With"}
+    // Pre-routing request handler:
+    // 1. Host header validation on loopback requests (defend against DNS rebinding).
+    // 2. Strict CORS policy: Competition endpoints allow LAN; Account endpoints NEVER grant wildcard CORS.
+    svr.set_pre_routing_handler([port](const httplib::Request& req, httplib::Response& res) {
+        // If request is targeting /api/accounts/*
+        if (req.path.rfind("/api/accounts", 0) == 0) {
+            // Defeat DNS rebinding: Host header must be localhost or 127.0.0.1 (with or without port)
+            if (req.has_header("Host")) {
+                std::string hostHdr = req.get_header_value("Host");
+                // Remove port if present
+                std::string hostName = hostHdr;
+                size_t colonPos = hostHdr.find(':');
+                if (colonPos != std::string::npos) {
+                    hostName = hostHdr.substr(0, colonPos);
+                }
+                if (hostName != "127.0.0.1" && hostName != "localhost" && hostName != "::1" && hostName != "[::1]") {
+                    res.status = 400;
+                    res.set_content("{\"error\":\"Invalid Host header: DNS rebinding rejected.\"}", "application/json");
+                    return httplib::Server::HandlerResponse::Handled;
+                }
+            }
+
+            // Reject cross-origin requests trying to exploit localhost
+            if (req.has_header("Origin")) {
+                std::string origin = req.get_header_value("Origin");
+                // Allow matching loopback origin only
+                if (origin.find("127.0.0.1") == std::string::npos &&
+                    origin.find("localhost") == std::string::npos &&
+                    origin.find("[::1]") == std::string::npos) {
+                    res.status = 403;
+                    res.set_content("{\"error\":\"Forbidden: Cross-origin account access denied.\"}", "application/json");
+                    return httplib::Server::HandlerResponse::Handled;
+                }
+            }
+        }
+        return httplib::Server::HandlerResponse::Unhandled;
     });
 
-    // Handle OPTIONS for CORS preflight
-    svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+    // Default CORS headers: only expose wildcard CORS for competition/public endpoints
+    // Account endpoints explicitly remove or do not grant wildcard CORS
+    svr.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
+        if (req.path.rfind("/api/accounts", 0) == 0) {
+            // Loopback only, no permissive wildcard
+            if (req.has_header("Origin")) {
+                std::string origin = req.get_header_value("Origin");
+                if (origin.find("127.0.0.1") != std::string::npos || origin.find("localhost") != std::string::npos) {
+                    res.set_header("Access-Control-Allow-Origin", origin.c_str());
+                    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TypeX-Token");
+                }
+            }
+        } else {
+            // Competition & words endpoints remain accessible to tournament contestants on LAN
+            res.set_header("Access-Control-Allow-Origin", "*");
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+        }
         res.status = 204;
     });
 
@@ -517,7 +639,7 @@ int main(int argc, char** argv) {
     });
 
     // Network inspection endpoint (Host mode LAN URLs)
-    svr.Get("/api/system/network", [host, port](const httplib::Request&, httplib::Response& res) {
+    svr.Get("/api/system/network", [host, port, writableDataDir](const httplib::Request&, httplib::Response& res) {
         std::vector<std::string> lanIps = getLanIpAddresses();
         json lanUrls = json::array();
         for (const auto& ip : lanIps) {
@@ -533,7 +655,9 @@ int main(int argc, char** argv) {
             {"port", port},
             {"isHostMode", (host == "0.0.0.0")},
             {"lanIps", lanIps},
-            {"lanUrls", lanUrls}
+            {"lanUrls", lanUrls},
+            {"activeDataDir", writableDataDir},
+            {"appVersion", "1.0.0"}
         };
         res.set_content(resp.dump(), "application/json");
     });
@@ -565,7 +689,22 @@ int main(int argc, char** argv) {
             }
         }
 
-        std::vector<std::string> sampled = corpus.sampleWords(effectiveTier, count, natural);
+        std::vector<std::string> initialRecent;
+        if (req.has_param("excludeRecent")) {
+            std::stringstream ss(req.get_param_value("excludeRecent"));
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) initialRecent.push_back(item);
+            }
+        } else if (req.has_param("recent")) {
+            std::stringstream ss(req.get_param_value("recent"));
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) initialRecent.push_back(item);
+            }
+        }
+
+        std::vector<std::string> sampled = corpus.sampleWords(effectiveTier, count, natural, initialRecent);
 
         json response = {
             {"tier", effectiveTier},
@@ -574,6 +713,7 @@ int main(int argc, char** argv) {
             {"words", sampled}
         };
 
+        res.set_header("Cache-Control", "no-store, no-cache, must-revalidate");
         res.set_content(response.dump(), "application/json");
     });
 
@@ -774,6 +914,544 @@ int main(int argc, char** argv) {
             };
             res.status = 400;
             res.set_content(err.dump(), "application/json");
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // User Profiles & Account Analytics Endpoints (STRICT LOOPBACK ONLY)
+    // Non-loopback requests (from LAN) return 403 Forbidden.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Security Validator for Account Endpoints:
+    // 1. Strict loopback peer check (127.0.0.1, ::1, or IPv4-mapped ::ffff:127.0.0.1).
+    // 2. Session Token validation: Requires matching X-TypeX-Token header or cookie.
+    auto validateAccountSecurity = [sessionToken](const httplib::Request& req, httplib::Response& res) -> bool {
+        std::string ip = req.remote_addr;
+        bool isLoopback = (ip == "127.0.0.1" || ip == "::1" || ip == "localhost" ||
+                           ip.rfind("127.", 0) == 0 || ip == "::ffff:127.0.0.1");
+        if (!isLoopback) {
+            res.status = 403;
+            res.set_content("{\"error\":\"Forbidden: Account endpoints are loopback-only.\"}", "application/json");
+            return false;
+        }
+
+        // Validate session token
+        if (!sessionToken.empty()) {
+            std::string providedToken = "";
+            if (req.has_header("X-TypeX-Token")) {
+                providedToken = req.get_header_value("X-TypeX-Token");
+            } else if (req.has_param("token")) {
+                providedToken = req.get_param_value("token");
+            } else if (req.has_header("Cookie")) {
+                std::string cookie = req.get_header_value("Cookie");
+                size_t pos = cookie.find("typex_token=");
+                if (pos != std::string::npos) {
+                    size_t end = cookie.find(';', pos);
+                    providedToken = cookie.substr(pos + 12, end == std::string::npos ? std::string::npos : end - (pos + 12));
+                }
+            }
+
+            if (providedToken != sessionToken) {
+                res.status = 401;
+                res.set_content("{\"error\":\"Unauthorized: Missing or invalid X-TypeX-Token header.\"}", "application/json");
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // GET /api/accounts/bootstrap — Returns session token to local frontend upon first load
+    svr.Get("/api/accounts/bootstrap", [sessionToken](const httplib::Request& req, httplib::Response& res) {
+        std::string ip = req.remote_addr;
+        bool isLoopback = (ip == "127.0.0.1" || ip == "::1" || ip == "localhost" ||
+                           ip.rfind("127.", 0) == 0 || ip == "::ffff:127.0.0.1");
+        if (!isLoopback) {
+            res.status = 403;
+            res.set_content("{\"error\":\"Forbidden: Bootstrap is loopback-only.\"}", "application/json");
+            return;
+        }
+        res.set_header("Set-Cookie", "typex_token=" + sessionToken + "; Path=/; SameSite=Strict; HttpOnly");
+        res.set_content(json({{"token", sessionToken}, {"sessionToken", sessionToken}, {"status", "ok"}}).dump(), "application/json");
+    });
+
+    // GET /api/accounts/profiles — List local profiles
+    svr.Get("/api/accounts/profiles", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        json profiles = dbManager.listProfiles();
+        std::string activeIdStr = dbManager.getSetting("active_profile_id", "");
+        json resp = {
+            {"profiles", profiles},
+            {"activeProfileId", activeIdStr.empty() ? nullptr : json(std::stoll(activeIdStr))}
+        };
+        res.set_content(resp.dump(), "application/json");
+    });
+
+    // POST /api/accounts/profiles — Create new profile
+    svr.Post("/api/accounts/profiles", [&dbManager, &masteryEngine, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+            std::string name = payload.value("name", "");
+            std::string color = payload.value("color", "#F59E0B");
+
+            int64_t id = dbManager.createProfile(name, color);
+            if (id <= 0) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Failed to create profile (name must be 1-40 chars and unique)\"}", "application/json");
+                return;
+            }
+
+            // Sync mastery engine state into newly created profile
+            dbManager.saveMasteryProfile(id, masteryEngine.exportToJson());
+
+            json profile = dbManager.getProfile(id);
+            res.set_content(profile.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // POST /api/accounts/profiles/switch — Switch active profile
+    svr.Post("/api/accounts/profiles/switch", [&dbManager, &masteryEngine, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+            if (payload.contains("guest") && payload["guest"].get<bool>()) {
+                dbManager.setSetting("active_profile_id", "");
+                res.set_content("{\"status\":\"switched_to_guest\"}", "application/json");
+                return;
+            }
+
+            int64_t id = payload.value("profileId", (int64_t)-1);
+            if (id > 0) {
+                // Save current active profile's mastery state before switching
+                std::string currentActive = dbManager.getSetting("active_profile_id", "");
+                if (!currentActive.empty()) {
+                    try {
+                        dbManager.saveMasteryProfile(std::stoll(currentActive), masteryEngine.exportToJson());
+                    } catch (...) {}
+                }
+
+                if (dbManager.touchProfileLastUsed(id)) {
+                    // Load target profile's mastery state
+                    json targetMastery = dbManager.getMasteryProfile(id);
+                    if (targetMastery.is_object() && !targetMastery.empty()) {
+                        masteryEngine.loadFromJson(targetMastery);
+                    }
+                    json prof = dbManager.getProfile(id);
+                    res.set_content(prof.dump(), "application/json");
+                    return;
+                }
+            }
+            res.status = 404;
+            res.set_content("{\"error\":\"Profile not found\"}", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // PUT /api/accounts/profiles/:id — Update profile name or color
+    svr.Put(R"(/api/accounts/profiles/(\d+))", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            int64_t id = std::stoll(req.matches[1]);
+            auto payload = json::parse(req.body);
+            std::string name = payload.value("name", "");
+            std::string color = payload.value("color", "#F59E0B");
+
+            if (dbManager.updateProfile(id, name, color)) {
+                json prof = dbManager.getProfile(id);
+                res.set_content(prof.dump(), "application/json");
+            } else {
+                res.status = 400;
+                res.set_content("{\"error\":\"Failed to update profile (name might already exist)\"}", "application/json");
+            }
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // DELETE /api/accounts/profiles/:id — Delete profile with automatic backup first
+    svr.Delete(R"(/api/accounts/profiles/(\d+))", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            int64_t id = std::stoll(req.matches[1]);
+
+            // Create automatic backup before deletion
+            std::string bPath;
+            dbManager.createBackup(bPath);
+
+            if (dbManager.deleteProfile(id)) {
+                std::string activeIdStr = dbManager.getSetting("active_profile_id", "");
+                if (activeIdStr == std::to_string(id)) {
+                    json remaining = dbManager.listProfiles();
+                    if (!remaining.empty()) {
+                        dbManager.touchProfileLastUsed(remaining[0]["id"].get<int64_t>());
+                    } else {
+                        dbManager.setSetting("active_profile_id", "");
+                    }
+                }
+                res.set_content("{\"status\":\"deleted\"}", "application/json");
+            } else {
+                res.status = 404;
+                res.set_content("{\"error\":\"Profile not found\"}", "application/json");
+            }
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // POST /api/accounts/tests — Save completed test with authoritative server recomputation
+    svr.Post("/api/accounts/tests", [&dbManager, &corpus, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+
+            int64_t profileId = payload.value("profileId", (int64_t)-1);
+            if (profileId <= 0) {
+                // If profileId not passed, check active profile
+                std::string activeStr = dbManager.getSetting("active_profile_id", "");
+                if (!activeStr.empty()) {
+                    profileId = std::stoll(activeStr);
+                }
+            }
+
+            if (profileId <= 0 || dbManager.getProfile(profileId) == nullptr) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid profile ID. Guest mode or non-existent profile.\"}", "application/json");
+                return;
+            }
+
+            // Reject target text containing words that are not in the selected corpus tier
+            std::string testTier = "";
+            if (payload.contains("config")) {
+                if (payload["config"].is_string()) {
+                    try {
+                        auto cfg = json::parse(payload["config"].get<std::string>());
+                        testTier = cfg.value("tier", "");
+                    } catch (...) {}
+                } else if (payload["config"].is_object()) {
+                    testTier = payload["config"].value("tier", "");
+                }
+            }
+
+            std::string testMode = payload.value("mode", "time");
+            // Learn mode uses phonetic/custom words, competition mode uses fixed text.
+            // For time and words modes, if tier is supplied and wordResults are present, validate them.
+            if ((testMode == "time" || testMode == "words") && !testTier.empty() && payload.contains("wordResults") && payload["wordResults"].is_array()) {
+                for (const auto& wr : payload["wordResults"]) {
+                    std::string orig = wr.value("original", "");
+                    if (!orig.empty() && !corpus.isWordInTier(testTier, orig)) {
+                        res.status = 400;
+                        res.set_content("{\"error\":\"Target text contains words outside the selected corpus tier.\"}", "application/json");
+                        return;
+                    }
+                }
+            }
+
+            double durationSeconds = payload.value("durationSeconds", 0.0);
+            if (durationSeconds <= 0.0 && payload.contains("durationMs")) {
+                durationSeconds = payload.value("durationMs", 0) / 1000.0;
+            }
+            if (durationSeconds <= 0.0 || durationSeconds > 3600.0) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Impossible test duration.\"}", "application/json");
+                return;
+            }
+
+            int correctChars = payload.value("correctChars", 0);
+            int incorrectChars = payload.value("incorrectChars", 0);
+            int extraChars = payload.value("extraChars", 0);
+            int uncorrectedErrors = incorrectChars + extraChars;
+            int clientCorrected = payload.value("correctedErrors", 0);
+            int clientTotalKs = payload.value("totalKeystrokes", 0);
+
+            // Recompute authoritative keystrokes from keystrokesLog if available
+            std::vector<typex::DatabaseManager::SaveTestRecord::KeyStat> keyStats;
+            std::unordered_map<std::string, typex::DatabaseManager::SaveTestRecord::KeyStat> keyMap;
+            std::vector<typex::DatabaseManager::SaveTestRecord::Confusion> confusions;
+            std::unordered_map<std::string, int> confMap;
+            std::vector<typex::DatabaseManager::SaveTestRecord::WordError> wordErrors;
+
+            int logKeyCount = 0;
+            int logKeystrokes = 0;
+            int logCorrected = 0;
+
+            if (payload.contains("keystrokesLog") && payload["keystrokesLog"].is_array()) {
+                int64_t prevTime = 0;
+                for (const auto& entry : payload["keystrokesLog"]) {
+                    std::string k = entry.value("key", "");
+                    int64_t t = entry.value("time", (int64_t)0);
+                    if (k == "Backspace") {
+                        logCorrected++;
+                    } else if (k.size() == 1 || k == "Space") {
+                        logKeyCount++;
+                        logKeystrokes++;
+                        int flight = 0;
+                        if (prevTime > 0 && t > prevTime) {
+                            flight = std::clamp(static_cast<int>(t - prevTime), 10, 1500);
+                        }
+                        prevTime = t;
+
+                        std::string normalizedKey = (k == "Space") ? " " : k;
+                        auto& ks = keyMap[normalizedKey];
+                        ks.key = normalizedKey;
+                        ks.attempts++;
+                        if (flight > 0) {
+                            ks.flightMsSum += flight;
+                            ks.flightN++;
+                        }
+                    }
+                }
+
+                // If keystrokesLog is provided, recompute authoritative characters:
+                if (logKeystrokes > 0) {
+                    clientCorrected = std::max(clientCorrected, logCorrected);
+                    int maxPossibleCorrect = std::max(0, logKeystrokes - clientCorrected);
+                    if (correctChars > maxPossibleCorrect || correctChars == 0) {
+                        correctChars = maxPossibleCorrect;
+                    }
+                }
+            }
+
+            int totalKeystrokes = std::max({
+                static_cast<int>(correctChars + incorrectChars + extraChars + clientCorrected),
+                clientTotalKs,
+                logKeyCount
+            });
+
+            // Single shared accuracy function: partial credit for corrected errors (penalty = 0.5)
+            constexpr double CORRECTION_PENALTY = 0.5;
+            double accuracy = 100.0;
+            if (totalKeystrokes > 0) {
+                double penalty = uncorrectedErrors + (CORRECTION_PENALTY * clientCorrected);
+                accuracy = std::clamp((1.0 - (penalty / totalKeystrokes)) * 100.0, 0.0, 100.0);
+            }
+
+            double durationMinutes = durationSeconds / 60.0;
+            if (durationMinutes <= 0.0) durationMinutes = 1.0 / 60.0;
+            double rawWpm = ((correctChars + incorrectChars + extraChars) / 5.0) / durationMinutes;
+            double netWpm = (correctChars / 5.0) / durationMinutes;
+
+            // Reject forged speed claims
+            if (netWpm > 320.0 || rawWpm > 350.0) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Implausible typing speed.\"}", "application/json");
+                return;
+            }
+
+            // Consistency
+            std::vector<double> rawKeystrokesPerSecond;
+            if (payload.contains("rawKeystrokesPerSecond") && payload["rawKeystrokesPerSecond"].is_array()) {
+                for (const auto& item : payload["rawKeystrokesPerSecond"]) {
+                    if (item.is_number()) rawKeystrokesPerSecond.push_back(item.get<double>());
+                }
+            }
+            double consistency = 100.0;
+            if (!rawKeystrokesPerSecond.empty()) {
+                double sum = std::accumulate(rawKeystrokesPerSecond.begin(), rawKeystrokesPerSecond.end(), 0.0);
+                double mean = sum / rawKeystrokesPerSecond.size();
+                if (mean > 0.0001) {
+                    double varSum = 0.0;
+                    for (double val : rawKeystrokesPerSecond) {
+                        varSum += (val - mean) * (val - mean);
+                    }
+                    double stddev = std::sqrt(varSum / rawKeystrokesPerSecond.size());
+                    double cv = (stddev / mean) * 100.0;
+                    consistency = std::clamp(100.0 - cv, 0.0, 100.0);
+                } else {
+                    consistency = 0.0;
+                }
+            }
+
+            // Process confusions payload
+            if (payload.contains("confusions") && payload["confusions"].is_array()) {
+                for (const auto& cf : payload["confusions"]) {
+                    std::string exp = cf.value("expected", "");
+                    std::string typ = cf.value("typed", "");
+                    int cnt = cf.value("count", 1);
+                    if (!exp.empty() && !typ.empty()) {
+                        confMap[exp + "->" + typ] += cnt;
+                    }
+                }
+            }
+            for (const auto& kv : confMap) {
+                auto delim = kv.first.find("->");
+                if (delim != std::string::npos) {
+                    confusions.push_back({
+                        kv.first.substr(0, delim),
+                        kv.first.substr(delim + 2),
+                        kv.second
+                    });
+                }
+            }
+
+            // Process word errors payload
+            if (payload.contains("wordErrors") && payload["wordErrors"].is_array()) {
+                for (const auto& we : payload["wordErrors"]) {
+                    std::string w = we.value("word", "");
+                    int cnt = we.value("count", 1);
+                    if (!w.empty()) {
+                        wordErrors.push_back({w, cnt});
+                    }
+                }
+            }
+
+            for (const auto& kv : keyMap) {
+                keyStats.push_back(kv.second);
+            }
+
+            typex::DatabaseManager::SaveTestRecord rec;
+            rec.profileId = profileId;
+            rec.startedAt = payload.value("startedAt", (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+            rec.tzOffsetMin = payload.value("tzOffsetMin", 0);
+            rec.mode = payload.value("mode", "time");
+            rec.config = payload.value("config", json::object());
+            rec.durationMs = static_cast<int64_t>(durationSeconds * 1000.0);
+            rec.netWpm = std::round(netWpm * 10.0) / 10.0;
+            rec.rawWpm = std::round(rawWpm * 10.0) / 10.0;
+            rec.accuracy = std::round(accuracy * 10.0) / 10.0;
+            rec.consistency = std::round(consistency * 10.0) / 10.0;
+            rec.correctChars = correctChars;
+            rec.incorrectChars = incorrectChars;
+            rec.extraChars = extraChars;
+            rec.uncorrectedErrors = uncorrectedErrors;
+            rec.correctedErrors = clientCorrected;
+            rec.totalKeystrokes = totalKeystrokes;
+            rec.perSecondWpm = payload.value("perSecondWpm", json::array());
+            rec.appVersion = "1.0.0";
+            rec.keyStats = std::move(keyStats);
+            rec.confusions = std::move(confusions);
+            rec.wordErrors = std::move(wordErrors);
+
+            int64_t testId = dbManager.insertTest(rec);
+            if (testId <= 0) {
+                res.status = 500;
+                res.set_content("{\"error\":\"Database insert failed\"}", "application/json");
+                return;
+            }
+
+            json savedTestJson = {
+                {"id", testId},
+                {"netWpm", rec.netWpm},
+                {"rawWpm", rec.rawWpm},
+                {"accuracy", rec.accuracy},
+                {"consistency", rec.consistency},
+                {"correctedErrors", rec.correctedErrors},
+                {"uncorrectedErrors", rec.uncorrectedErrors},
+                {"totalKeystrokes", rec.totalKeystrokes}
+            };
+
+            res.set_content(json({
+                {"status", "saved"},
+                {"testId", testId},
+                {"test", savedTestJson},
+                {"netWpm", rec.netWpm},
+                {"rawWpm", rec.rawWpm},
+                {"accuracy", rec.accuracy},
+                {"consistency", rec.consistency}
+            }).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // GET /api/accounts/analytics — Filtered stats, charts, heatmap, confusions
+    svr.Get("/api/accounts/analytics", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+
+        int64_t profileId = -1;
+        if (req.has_param("profileId")) {
+            try { profileId = std::stoll(req.get_param_value("profileId")); } catch (...) {}
+        }
+        if (profileId <= 0) {
+            std::string active = dbManager.getSetting("active_profile_id", "");
+            if (!active.empty()) profileId = std::stoll(active);
+        }
+
+        if (profileId <= 0) {
+            res.set_content("{\"empty\":true,\"message\":\"No active profile selected.\"}", "application/json");
+            return;
+        }
+
+        int64_t fromEpochMs = 0;
+        int64_t toEpochMs = 0;
+        if (req.has_param("from")) {
+            try { fromEpochMs = std::stoll(req.get_param_value("from")); } catch (...) {}
+        }
+        if (req.has_param("to")) {
+            try { toEpochMs = std::stoll(req.get_param_value("to")); } catch (...) {}
+        }
+        std::string modeFilter = req.has_param("mode") ? req.get_param_value("mode") : "";
+        std::string durationFilter = req.has_param("duration") ? req.get_param_value("duration") : "";
+
+        json analytics = dbManager.getAnalytics(profileId, fromEpochMs, toEpochMs, modeFilter, durationFilter);
+        json prof = dbManager.getProfile(profileId);
+        analytics["profile"] = prof;
+
+        res.set_content(analytics.dump(), "application/json");
+    });
+
+    // GET /api/accounts/tests/:id — Test detail view
+    svr.Get(R"(/api/accounts/tests/(\d+))", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        int64_t testId = std::stoll(req.matches[1]);
+        json details = dbManager.getTestDetails(testId);
+        if (!details.is_null()) {
+            res.set_content(details.dump(), "application/json");
+        } else {
+            res.status = 404;
+            res.set_content("{\"error\":\"Test not found\"}", "application/json");
+        }
+    });
+
+    // POST /api/accounts/backup — Manually trigger backup
+    svr.Post("/api/accounts/backup", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        std::string backupPath;
+        if (dbManager.createBackup(backupPath)) {
+            res.set_content(json({
+                {"status", "ok"},
+                {"success", true},
+                {"path", backupPath},
+                {"backupPath", backupPath}
+            }).dump(), "application/json");
+        } else {
+            res.status = 500;
+            res.set_content("{\"error\":\"Backup failed\",\"success\":false}", "application/json");
+        }
+    });
+
+    // POST /api/accounts/danger/delete-all — Wipe profile test history
+    svr.Post("/api/accounts/danger/delete-all", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+            int64_t profileId = payload.value("profileId", (int64_t)-1);
+            if (profileId <= 0) {
+                std::string active = dbManager.getSetting("active_profile_id", "");
+                if (!active.empty()) profileId = std::stoll(active);
+            }
+
+            // Create automatic backup before wipe
+            std::string bPath;
+            dbManager.createBackup(bPath);
+
+            if (dbManager.deleteAllDataForProfile(profileId)) {
+                res.set_content("{\"status\":\"cleared\"}", "application/json");
+            } else {
+                res.status = 500;
+                res.set_content("{\"error\":\"Failed to clear data\"}", "application/json");
+            }
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
         }
     });
 

@@ -21,6 +21,11 @@ frontend/out/
 backend/data/backups/
 backend/data/mastery_profile.json
 backend/data/admin_pin.json
+backend/data/*.db*
+*.o
+*.a
 artifacts/screenshots/
+screenshots/
 .freebuff/
 .DS_Store
+

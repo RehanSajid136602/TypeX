@@ -279,6 +279,112 @@ public:
         return buildStatusJson();
     }
 
+    json exportToJson() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        json j;
+        j["version"] = 2;
+
+        json keysJson = json::object();
+        for (const auto& [k, stat] : keyStats_) {
+            keysJson[k] = {
+                {"confidence", std::round(stat.confidence * 10.0) / 10.0},
+                {"attempts", stat.attempts},
+                {"errors", stat.errors},
+                {"emaFlightMs", std::round(stat.emaFlightMs * 10.0) / 10.0},
+                {"lastPracticedEpoch", stat.lastPracticedEpoch},
+                {"status", stat.status}
+            };
+        }
+        j["keyStats"] = keysJson;
+
+        json fJson = json::object();
+        for (const auto& [k, stat] : fingerStats_) {
+            fJson[k] = {
+                {"avgMs", std::round(stat.avgMs * 10.0) / 10.0},
+                {"accuracy", std::round(stat.accuracy * 10.0) / 10.0},
+                {"keystrokes", stat.keystrokes},
+                {"errors", stat.errors}
+            };
+        }
+        j["fingerStats"] = fJson;
+
+        json confJson = json::object();
+        for (const auto& [k, cnt] : confusionCounts_) {
+            confJson[k] = cnt;
+        }
+        j["confusionCounts"] = confJson;
+
+        json sfbJson = json::object();
+        for (const auto& [k, item] : sfbStats_) {
+            sfbJson[k] = {
+                {"avgMs", std::round(item.avgMs * 10.0) / 10.0},
+                {"count", item.count}
+            };
+        }
+        j["sfbStats"] = sfbJson;
+
+        json trJson = json::object();
+        for (const auto& [k, target] : trackActiveTarget_) {
+            trJson[k] = target;
+        }
+        j["trackActiveTarget"] = trJson;
+
+        return j;
+    }
+
+    void loadFromJson(const json& j) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        initDefaultProfile();
+
+        if (j.contains("keyStats") && j["keyStats"].is_object()) {
+            for (auto& [k, v] : j["keyStats"].items()) {
+                keyStats_[k] = {
+                    k,
+                    v.value("confidence", 0.0),
+                    v.value("attempts", 0),
+                    v.value("errors", 0),
+                    v.value("emaFlightMs", 220.0),
+                    v.value("lastPracticedEpoch", (int64_t)0),
+                    v.value("status", "locked")
+                };
+            }
+        }
+
+        if (j.contains("fingerStats") && j["fingerStats"].is_object()) {
+            for (auto& [k, v] : j["fingerStats"].items()) {
+                fingerStats_[k] = {
+                    k,
+                    v.value("avgMs", 210.0),
+                    v.value("accuracy", 95.0),
+                    v.value("keystrokes", 0),
+                    v.value("errors", 0)
+                };
+            }
+        }
+
+        if (j.contains("confusionCounts") && j["confusionCounts"].is_object()) {
+            for (auto& [k, v] : j["confusionCounts"].items()) {
+                confusionCounts_[k] = v.get<int>();
+            }
+        }
+
+        if (j.contains("sfbStats") && j["sfbStats"].is_object()) {
+            for (auto& [k, v] : j["sfbStats"].items()) {
+                sfbStats_[k] = {
+                    k,
+                    v.value("avgMs", 220.0),
+                    v.value("count", 0)
+                };
+            }
+        }
+
+        if (j.contains("trackActiveTarget") && j["trackActiveTarget"].is_object()) {
+            for (auto& [k, v] : j["trackActiveTarget"].items()) {
+                trackActiveTarget_[k] = v.get<std::string>();
+            }
+        }
+    }
+
     json synthesizeLesson(const std::string& track, size_t count, const std::string& focusKeyOverride, const std::vector<std::string>& corpus) {
         std::lock_guard<std::mutex> lock(mutex_);
 

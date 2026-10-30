@@ -1,0 +1,14 @@
+{
+  "name": "typex-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeX — High-Performance Minimalist Typing Engine & Live Stage Competition Platform",
+  "scripts": {
+    "dev": "./start.sh",
+    "build:frontend": "cd frontend && pnpm exec next build",
+    "build:backend": "g++ -std=c++17 -O3 -pthread backend/main.cpp -Ibackend/include -o backend/typex_server",
+    "build:shell": "g++ -std=c++17 -O3 desktop_shell/main.cpp -o desktop_shell/typex-app",
+    "build:deb": "./scripts/build_deb.sh",
+    "package": "./scripts/build_deb.sh"
+  }
+}
