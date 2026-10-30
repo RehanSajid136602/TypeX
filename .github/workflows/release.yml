@@ -142,6 +142,9 @@ jobs:
             cp -r frontend/out/* build/windows/dist_win/web/
           fi
           
+          # Copy tracked NSIS installer script
+          cp packaging/windows/installer.nsi build/windows/installer.nsi
+          
           # Build NSIS installer executable
           cd build/windows
           makensis -DPRODUCT_VERSION="${{ steps.vars.outputs.tag }}" -DOUTFILE="TypeX-${{ steps.vars.outputs.tag }}-Setup.exe" installer.nsi
