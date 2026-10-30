@@ -115,7 +115,7 @@ jobs:
           x86_64-w64-mingw32-gcc -O3 -pthread -c backend/include/sqlite3.c -o backend/sqlite3_win.o
           x86_64-w64-mingw32-g++ -std=c++17 -O3 -pthread backend/main.cpp backend/sqlite3_win.o \
             -Ibackend/include \
-            -D_WIN32_WINNT=0x0601 \
+            -D_WIN32_WINNT=0x0A00 \
             -static -static-libgcc -static-libstdc++ \
             -lws2_32 -liphlpapi \
             -o backend/TypeX.exe

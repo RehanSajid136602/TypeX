@@ -22,6 +22,22 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
+#include <time.h>
+
+inline struct tm* portable_gmtime_r(const time_t* timer, struct tm* buf) {
+    if (gmtime_s(buf, timer) == 0) return buf;
+    return nullptr;
+}
+#ifndef gmtime_r
+#define gmtime_r portable_gmtime_r
+#endif
+
+inline time_t portable_timegm(struct tm* tm) {
+    return _mkgmtime(tm);
+}
+#ifndef timegm
+#define timegm portable_timegm
+#endif
 #endif
 
 #include "httplib.h"
