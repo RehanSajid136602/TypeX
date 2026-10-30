@@ -117,7 +117,7 @@ jobs:
             -Ibackend/include \
             -D_WIN32_WINNT=0x0A00 \
             -static -static-libgcc -static-libstdc++ \
-            -lws2_32 -liphlpapi \
+            -lws2_32 -liphlpapi -lshell32 \
             -o backend/TypeX.exe
           x86_64-w64-mingw32-strip --strip-unneeded backend/TypeX.exe
 
@@ -127,47 +127,35 @@ jobs:
           pnpm install --frozen-lockfile || pnpm install
           pnpm exec next build
 
-      - name: Package Windows Bundle (.zip & NSIS .exe installer)
+      - name: Build Windows Standalone Installer (.exe)
         run: |
-          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64
-          cp backend/TypeX.exe dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/
-          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data
-          cp backend/data/*.txt dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data/
+          mkdir -p build/windows/dist_win
+          cp backend/TypeX.exe build/windows/dist_win/
+          cp assets/icons/typex.ico build/windows/dist_win/
+          mkdir -p build/windows/dist_win/data
+          cp backend/data/*.txt build/windows/dist_win/data/
           if [ -f backend/data/WORDLISTS.md ]; then
-            cp backend/data/WORDLISTS.md dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/data/
+            cp backend/data/WORDLISTS.md build/windows/dist_win/data/
           fi
           if [ -d frontend/out ]; then
-            mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/web
-            cp -r frontend/out/* dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/web/
+            mkdir -p build/windows/dist_win/web
+            cp -r frontend/out/* build/windows/dist_win/web/
           fi
-          # Create convenient startup batch script
-          cat << 'EOF' > dist/typex-${{ steps.vars.outputs.tag }}-windows-x64/start.bat
-          @echo off
-          title TypeX Engine
-          echo Starting TypeX Native Server on port 8080...
-          start "" TypeX.exe 8080
-          echo Opening TypeX in default browser...
-          start http://localhost:8080
-          EOF
-          cd dist
-          zip -r typex-${{ steps.vars.outputs.tag }}-windows-x64.zip typex-${{ steps.vars.outputs.tag }}-windows-x64
           
-          # Build NSIS installer
-          mkdir -p ../build/windows/dist_win
-          cp -r typex-${{ steps.vars.outputs.tag }}-windows-x64/* ../build/windows/dist_win/
-          cd ../build/windows
-          makensis -DPRODUCT_VERSION="${{ steps.vars.outputs.tag }}" installer.nsi || true
-          if [ -f TypeX-Setup.exe ]; then
-            cp TypeX-Setup.exe ../../dist/typex-${{ steps.vars.outputs.tag }}-windows-x64-setup.exe
-          fi
+          # Build NSIS installer executable
+          cd build/windows
+          makensis -DPRODUCT_VERSION="${{ steps.vars.outputs.tag }}" -DOUTFILE="TypeX-${{ steps.vars.outputs.tag }}-Setup.exe" installer.nsi
+          mkdir -p ../../dist
+          cp TypeX-${{ steps.vars.outputs.tag }}-Setup.exe ../../dist/
+          cd ../..
+          ls -lh dist/TypeX-*-Setup.exe
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
           path: |
-            dist/*.zip
-            dist/*-setup.exe
+            dist/TypeX-*-Setup.exe
 
   publish-release:
     name: Publish GitHub Release

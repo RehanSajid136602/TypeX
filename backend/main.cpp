@@ -22,6 +22,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
+#include <windows.h>
+#include <shellapi.h>
 #include <time.h>
 
 inline struct tm* portable_gmtime_r(const time_t* timer, struct tm* buf) {
@@ -120,12 +122,22 @@ struct TierList {
     std::string source;
 };
 
-// Resolve writable user data directory (honors TYPEX_DATA_DIR, XDG_DATA_HOME, or defaults to ~/.local/share/TypeX)
+// Resolve writable user data directory (honors TYPEX_DATA_DIR, LOCALAPPDATA, XDG_DATA_HOME, or defaults to ~/.local/share/TypeX)
 std::string resolveWritableDataDir() {
     const char* envDir = std::getenv("TYPEX_DATA_DIR");
     if (envDir && std::string(envDir).size() > 0) {
         return std::string(envDir);
     }
+#ifdef _WIN32
+    const char* localAppData = std::getenv("LOCALAPPDATA");
+    if (localAppData && std::string(localAppData).size() > 0) {
+        return std::string(localAppData) + "/TypeX";
+    }
+    const char* appData = std::getenv("APPDATA");
+    if (appData && std::string(appData).size() > 0) {
+        return std::string(appData) + "/TypeX";
+    }
+#endif
     const char* xdgData = std::getenv("XDG_DATA_HOME");
     if (xdgData && std::string(xdgData).size() > 0) {
         return std::string(xdgData) + "/TypeX";
@@ -147,9 +159,9 @@ std::string resolveWordlistsDir(const std::string& explicitDir = "") {
         return std::string(envWords);
     }
     static const std::vector<std::string> candidates = {
+        "data",
         "/usr/share/typex/data",
         "backend/data",
-        "data",
         "../backend/data"
     };
     for (const auto& dir : candidates) {
@@ -171,11 +183,11 @@ std::string resolveStaticWebDir(const std::string& explicitDir = "") {
         return std::string(envWeb);
     }
     static const std::vector<std::string> candidates = {
+        "web",
         "/usr/share/typex/web",
         "frontend/out",
         "../frontend/out",
-        "out",
-        "web"
+        "out"
     };
     for (const auto& dir : candidates) {
         if (std::filesystem::exists(dir + "/index.html")) {
@@ -1843,6 +1855,13 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "[INFO] TypeX C++ Server listening on http://" << host << ":" << port << std::endl;
+#ifdef _WIN32
+    std::string appUrl = "http://localhost:" + std::to_string(port);
+    std::thread([appUrl]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        ShellExecuteA(NULL, "open", appUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    }).detach();
+#endif
     bool success = svr.listen(host.c_str(), port);
     if (!success) {
         std::cerr << "[ERROR] Failed to bind to " << host << ":" << port << std::endl;
