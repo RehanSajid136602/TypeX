@@ -332,31 +332,22 @@ public:
         return tiers_.empty() ? std::string(kDefaultTier) : tiers_.front().tier;
     }
 
-    // Vocabulary pool for the adaptive learning engine (english_10k then english_25k).
+    // Vocabulary pool for the adaptive learning engine (english_10k only).
     const std::vector<std::string>& learnPool() const {
-        static std::vector<std::string> combinedPool;
+        static std::vector<std::string> pool;
         static bool initialized = false;
         if (!initialized) {
-            std::unordered_set<std::string> seen;
             const TierList* t10k = findTier("english_10k");
-            if (t10k) {
-                for (const auto& w : t10k->words) {
-                    if (seen.insert(w).second) combinedPool.push_back(w);
-                }
-            }
-            const TierList* t25k = findTier("english_25k");
-            if (t25k) {
-                for (const auto& w : t25k->words) {
-                    if (seen.insert(w).second) combinedPool.push_back(w);
-                }
-            }
-            if (combinedPool.empty()) {
+            if (t10k && !t10k->words.empty()) {
+                pool = t10k->words;
+            } else {
                 const TierList* fallback = findTier(kDefaultTier);
-                if (fallback) combinedPool = fallback->words;
+                if (fallback) pool = fallback->words;
+                else if (!tiers_.empty()) pool = tiers_.front().words;
             }
             initialized = true;
         }
-        return combinedPool;
+        return pool;
     }
 
     // Vocabulary for a specific tier

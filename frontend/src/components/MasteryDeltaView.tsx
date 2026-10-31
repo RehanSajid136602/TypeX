@@ -63,7 +63,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
                 Curriculum Milestone Unlocked!
               </div>
               <div className="text-sm text-[var(--typed-color)]">
-                Passed 98% first-attempt gate with &ge; 50 keystrokes. Advancing to next token: [ <span className="font-bold text-[var(--accent-color)] uppercase">{delta.newActiveTarget}</span> ]
+                Reached 35 WPM target speed with &ge; 95% accuracy. Advancing to next token: [ <span className="font-bold text-[var(--accent-color)] uppercase">{delta.newActiveTarget}</span> ]
               </div>
             </div>
           </div>
@@ -74,9 +74,9 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
-              Target gate requires &ge; 98.0% first-attempt accuracy (achieved:{" "}
+              Target gate requires 35 WPM target speed with &ge; 95.0% accuracy (achieved:{" "}
               <strong className="text-white font-bold">{delta.targetAccuracy ?? 0}%</strong> across{" "}
-              <strong className="text-white font-bold">{delta.targetAttempts ?? 0}</strong>/50 strokes). Keep practicing to unlock next key!
+              <strong className="text-white font-bold">{delta.targetAttempts ?? 0}</strong>/20 strokes). Keep practicing to unlock next key!
             </span>
           </div>
         </div>
@@ -89,46 +89,49 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
             Target Mastery Gate
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-white/[0.05] text-[var(--accent-color)] font-medium">
-            98% UNLOCK GATE (50+ STROKES)
+            35 WPM TARGET GATE (95% ACCURACY)
           </span>
         </div>
 
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <div className="flex items-baseline gap-3">
             <span className="text-4xl md:text-5xl font-light text-[var(--accent-color)] tabular-nums">
-              {delta.targetAccuracy !== undefined ? `${delta.targetAccuracy}%` : `${delta.newConfidence}%`}
+              {Math.min(100, Math.round(delta.newConfidence))}%
             </span>
             <span
               className={`text-sm font-medium ${
-                (delta.targetAccuracy ?? delta.newConfidence) >= 98.0
+                delta.passedGate
                   ? "text-emerald-400"
                   : "text-[#e06c75]"
               }`}
             >
-              {(delta.targetAccuracy ?? delta.newConfidence) >= 98.0 ? "PASSED" : "PRACTICING"}
+              {delta.passedGate ? "TARGET REACHED" : "PRACTICING"}
             </span>
           </div>
 
           <div className="text-xs text-[var(--inactive-color)] opacity-75">
-            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAttempts ?? 0} / 50</span>
+            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAttempts ?? 0} / 20</span>
+            {delta.targetAccuracy !== undefined && (
+              <span className="ml-3">Accuracy: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAccuracy}%</span></span>
+            )}
           </div>
         </div>
 
-        {/* Progress Bar with 98% Milestone Marker */}
+        {/* Progress Bar with 100% Target Marker */}
         <div className="w-full relative py-1">
           <div className="w-full h-2.5 rounded-full bg-white/[0.06] overflow-hidden relative">
             <motion.div
               initial={{ width: `${Math.min(100, delta.previousConfidence)}%` }}
-              animate={{ width: `${Math.min(100, delta.targetAccuracy ?? delta.newConfidence)}%` }}
+              animate={{ width: `${Math.min(100, delta.newConfidence)}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="h-full rounded-full bg-gradient-to-r from-[var(--accent-secondary)] to-[var(--accent-color)] shadow-[0_0_8px_var(--accent-glow)]"
             />
           </div>
-          {/* 98% Threshold Line */}
+          {/* 100% Threshold Line */}
           <div
-            style={{ left: "98%" }}
-            className="absolute top-0 bottom-0 w-0.5 bg-white/40 z-10 -translate-x-1/2"
-            title="98% Mastery Gate"
+            style={{ left: "100%" }}
+            className="absolute top-0 bottom-0 w-0.5 bg-white/40 z-10 -translate-x-full"
+            title="35 WPM Target Speed Threshold"
           />
         </div>
       </div>

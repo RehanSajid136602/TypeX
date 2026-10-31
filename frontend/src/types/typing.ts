@@ -36,15 +36,20 @@ export const CURRICULUM_KEY_SEQUENCE = [
   "e", "n", "i", "t", "r", "l", "s", "a", "o", "d", "y", "c", "h", "g",
   "m", "u", "p", "b", "k", "v", "w", "f", "z", "x", "q", "j"
 ] as const;
-export const UNLOCK_ACCURACY = 98.0;
-export const MIN_TARGET_ATTEMPTS = 50;
+export const TARGET_SPEED_WPM = 35.0;
+export const UNLOCK_ACCURACY = 95.0;
+export const MIN_TARGET_ATTEMPTS = 20;
 
 export interface KeyStatus {
   key: string;
   confidence: number;
+  speedConfidence?: number;
+  bestSpeedConfidence?: number;
   emaFlightMs: number;
+  bestFlightMs?: number;
   attempts: number;
   errors: number;
+  samples?: number;
   status: "mastered" | "active" | "unlocked" | "locked";
   firstAttemptAttempts?: number;
   firstAttemptErrors?: number;
@@ -112,6 +117,7 @@ export interface MasteryDeltaReport {
   passedGate?: boolean;
   targetAttempts?: number;
   targetAccuracy?: number;
+  targetSpeedWpm?: number;
   missedWords?: string[];
   weakestFinger: {
     finger: string;
@@ -134,6 +140,7 @@ export interface MasteryStatus {
     avgMs: number;
     accuracy: number;
   };
+  targetSpeedWpm?: number;
 }
 
 export interface TelemetryPayload {

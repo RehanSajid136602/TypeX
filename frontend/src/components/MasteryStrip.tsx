@@ -32,9 +32,12 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
 
   const effectiveTarget = focusKey || activeTarget || "s";
   const targetStat = statusMap.get(effectiveTarget.toLowerCase());
+  const targetSpeedConf = targetStat && targetStat.bestSpeedConfidence !== undefined
+    ? Math.round(targetStat.bestSpeedConfidence * 100)
+    : (targetStat ? Math.round(targetStat.confidence) : 0);
   const targetAcc = targetStat && targetStat.firstAttemptAttempts && targetStat.firstAttemptAttempts > 0
     ? Math.round((1 - (targetStat.firstAttemptErrors || 0) / targetStat.firstAttemptAttempts) * 100)
-    : (targetStat ? Math.round(targetStat.confidence) : 40);
+    : 100;
 
   return (
     <div
@@ -57,7 +60,7 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
             stateClass = "border border-[var(--accent-color)] text-[var(--accent-color)] font-bold shadow-[0_0_8px_var(--accent-glow)] bg-white/[0.04]";
             bottomIndicator = (
               <span className="text-[8px] text-[var(--accent-color)] leading-none mt-0.5 font-normal">
-                {targetAcc}%
+                {targetSpeedConf}%
               </span>
             );
           } else if (isMastered) {
@@ -102,10 +105,10 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
         </span>
         <span className="text-[var(--inactive-color)] opacity-40">·</span>
         <span className="tabular-nums font-medium text-[var(--typed-color)]">
-          {targetAcc}%
+          {targetSpeedConf}%
         </span>
         <span className="text-[10px] text-[var(--inactive-color)] opacity-70">
-          / 98% to unlock
+          speed ({targetAcc}% acc / 35 WPM target)
         </span>
         {focusKey && (
           <button

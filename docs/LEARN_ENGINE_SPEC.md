@@ -31,24 +31,22 @@ Lessons consist of 3 pedagogical phases:
 3. **Phase C · Rhythm & Cadence (~20% of lesson):**
    - Alternating flow words and target words to balance speed, finger recovery, and fluid transitions.
 
-### Markov Bigram Fallback (Pattern Drill)
-- If the available dictionary count of real English words satisfying $\Sigma_{\text{allowed}}$ is $< 40$, the engine activates the **Markov Bigram Pseudo-Word Generator**.
-- Uses an authentic English bigram transition matrix normalized over the allowed alphabet $\Sigma_{\text{allowed}}$.
-- Words are flagged with `isPatternDrill: true`, and the UI displays a specialized **Pattern Drill** badge.
-- When $\ge 40$ real words exist (from key `l` onward), authentic vocabulary from `english_10k` and `english_25k` is used exclusively.
+### Order-4 Phonetic Markov Generator
+- When fewer than 15 authentic English words in `english_10k` match the active alphabet filter, the engine employs an **Order-4 Phonetic Markov Generator** (3-character context) trained on the top 10k English words.
+- Generates natural, pronounceable pseudo-words that strictly adhere to the unlocked alphabet and focus key.
+- Real words from `english_10k` are prioritized by frequency; rare words from 25k are excluded from guided lessons.
 
-## 4. 98% First-Attempt Unlock Gate
-Advancing to the next key requires rigorous neuromuscular consistency:
-- **Accuracy Threshold:** $\ge 98.0\%$ first-attempt accuracy (`UNLOCK_ACCURACY = 98.0`).
-- **Target Keystroke Volume:** $\ge 50$ first-attempt target key strokes (`MIN_TARGET_ATTEMPTS = 50`).
-- **First-Attempt Strictness:**
-  - Backspacing and correcting an error does **not** erase the mistake; the key index is permanently marked as an error.
-  - Drill keystrokes (from the Neural Lock-In Drill) are tagged `isDrill: true` and **excluded** from gate calculations.
+## 4. Keybr Target Speed Gate & Accuracy Guardrail
+Advancing through the curriculum uses Keybr's speed-first confidence algorithm with an accuracy guardrail:
+- **Target Speed:** 35.0 WPM (`TARGET_SPEED_WPM = 35.0`), corresponding to a target keystroke latency of $\approx 342.9\text{ ms}$.
+- **Speed Confidence:** Measured as $\text{targetTimeMs} / \text{emaFlightMs} \ge 1.0$ (bestSpeedConfidence $\ge 1.0$).
+- **Sample Guardrail:** $\ge 20$ valid keystroke samples (`MIN_TARGET_ATTEMPTS = 20`).
+- **Accuracy Guardrail:** $\ge 95.0\%$ first-attempt accuracy (`UNLOCK_ACCURACY = 95.0`).
+- **Focus Progression:**
+  - Starts learners with the 6 most frequent keys: `e, n, i, t, r, l`.
+  - Automatically targets the weakest unmastered included key to eliminate bottlenecks.
   - Telemetry formula:
     $$\text{Accuracy}_{\text{target}} = \frac{\text{firstAttemptAttempts} - \text{firstAttemptErrors}}{\text{firstAttemptAttempts}} \times 100$$
-    - 50/50 target strokes (100.0%) $\to$ **PASS** (unlocks next key).
-    - 49/50 target strokes (98.0%) $\to$ **PASS** (unlocks next key).
-    - 48/50 target strokes (96.0%) $\to$ **FAIL** (target remains locked, missed words queued for spaced repetition).
 
 ## 5. Focus Mode & Distraction-Free Flow
 - Focus mode activates immediately on the first keystroke of any session.
@@ -60,7 +58,8 @@ Advancing to the next key requires rigorous neuromuscular consistency:
   - Restored only on deliberate swipe ($\ge 80\text{px}$ in $\le 300\text{ms}$), pressing `Escape`, or completing the test.
 
 ## 6. Profile Persistence & Schema Migration
-- Mastery state is persisted in SQLite (`mastery_profiles` table).
-- Automatically migrates profiles to schema **version 3**:
-  - Preserves all previously mastered keys (`status = "mastered"`, confidence score).
-  - Adds `firstAttemptAttempts` and `firstAttemptErrors` tracking fields.
+- Mastery state is persisted in JSON and SQLite (`mastery_profiles` table).
+- Automatically migrates profiles to schema **version 4**:
+  - Preserves all previously mastered keys (`status = "mastered"`, bestSpeedConfidence $\ge 1.0$).
+  - Tracks `samples`, `bestFlightMs`, `speedConfidence`, and `bestSpeedConfidence`.
+  - Manages multi-track progression across `phonetic_unlock`, `trigram_chunks`, `sfb_destroyer`, `finger_gym`, and `cpp_symbols`.

@@ -40,12 +40,13 @@ Whether you are training finger biomechanics with adaptive rank-decay word sampl
 ## ✨ Key Features
 
 - 🏎️ **120fps Kinetic Arena**: Smooth multi-line rolling word display that scrolls continuously without paragraph breaks.
-- 🎯 **Strict Key-by-Key Curriculum & 98% Gate (`learn` mode)**:
-  - Strict key introduction order: `e, n, i, t, r, l, s, a, o, d, y, c, h, g, m, u, p, b, k, v, w, f, z, x, q, j`.
+- 🎯 **Keybr-Style Adaptive Curriculum & Target Speed Gate (`learn` mode)**:
+  - Guided curriculum key order: `e, n, i, t, r, l, s, a, o, d, y, c, h, g, m, u, p, b, k, v, w, f, z, x, q, j` (starts with top 6 keys).
   - Strict containment guarantee: learners never see locked characters.
-  - Markov Bigram Fallback (Pattern Drill) for early lessons with $< 40$ real vocabulary words.
-  - Strict 98% first-attempt unlock gate requiring $\ge 50$ clean keystrokes to advance.
-  - Neural Lock-In Drill with spaced repetition for missed tokens.
+  - Order-4 Phonetic Markov Generator for early lessons when $< 15$ matching real words exist.
+  - Keybr speed-first gate: 35.0 WPM target speed ($\ge 1.0$ speed confidence) with a 95% accuracy guardrail ($\ge 20$ samples).
+  - Multi-track learning support: Phonetic Unlock, Trigram Chunks, SFB Destroyer, Finger Gym, and C++ Symbols.
+  - Spaced repetition queue for missed tokens.
 - 🧘 **Distraction-Free Focus Mode**:
   - Automatically hides all UI chrome on typing start.
   - Survives drill transitions and idle pauses without flashing the screen.
