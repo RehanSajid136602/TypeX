@@ -30,6 +30,15 @@ export type ErrorBehavior = "free" | "stop" | "strict";
 
 export type ThemeName = "obsidian" | "tokyo" | "nordic";
 
+// Single source of truth for phonetic unlock curriculum progression
+export const CURRICULUM_KEY_ORDER = "enitrlsady chg mupb kvwf zxqj";
+export const CURRICULUM_KEY_SEQUENCE = [
+  "e", "n", "i", "t", "r", "l", "s", "a", "o", "d", "y", "c", "h", "g",
+  "m", "u", "p", "b", "k", "v", "w", "f", "z", "x", "q", "j"
+] as const;
+export const UNLOCK_ACCURACY = 98.0;
+export const MIN_TARGET_ATTEMPTS = 50;
+
 export interface KeyStatus {
   key: string;
   confidence: number;
@@ -37,6 +46,8 @@ export interface KeyStatus {
   attempts: number;
   errors: number;
   status: "mastered" | "active" | "unlocked" | "locked";
+  firstAttemptAttempts?: number;
+  firstAttemptErrors?: number;
 }
 
 export interface FingerStat {
@@ -65,6 +76,7 @@ export interface LearnLessonResponse {
   targetConfidence: number;
   unlockedKeys: string[];
   words: string[];
+  isPatternDrill?: boolean;
   phaseBreakdown: {
     warmup: [number, number];
     targetDrill: [number, number];
@@ -77,6 +89,8 @@ export interface LearnKeystroke {
   actual: string;
   flightMs: number;
   correct: boolean;
+  isFirstAttempt?: boolean;
+  isDrill?: boolean;
 }
 
 export interface LearnSubmitPayload {
@@ -85,6 +99,8 @@ export interface LearnSubmitPayload {
   durationSeconds: number;
   keystrokes: LearnKeystroke[];
   repairedWords?: string[];
+  missedWords?: string[];
+  isDrill?: boolean;
 }
 
 export interface MasteryDeltaReport {
@@ -93,6 +109,10 @@ export interface MasteryDeltaReport {
   confidenceDelta: number;
   unlockedNewTarget: boolean;
   newActiveTarget: string;
+  passedGate?: boolean;
+  targetAttempts?: number;
+  targetAccuracy?: number;
+  missedWords?: string[];
   weakestFinger: {
     finger: string;
     avgMs: number;

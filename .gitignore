@@ -29,3 +29,4 @@ screenshots/
 .freebuff/
 .DS_Store
 
+tests/test_learning_engine

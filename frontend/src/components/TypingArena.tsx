@@ -24,6 +24,7 @@ import { sampleClientWords } from "@/utils/monkeytypeWordlists";
 interface WordBatch {
   words: string[];
   activeTarget?: string;
+  isPatternDrill?: boolean;
 }
 
 // Word source for the arena. Kept outside the component so effects can await it
@@ -48,7 +49,11 @@ async function requestWordBatch(params: {
       if (!res.ok) throw new Error("Learn API error");
       const data = await res.json();
       if (data && Array.isArray(data.words) && data.words.length > 0) {
-        return { words: data.words, activeTarget: data.activeTarget || "s" };
+        return {
+          words: data.words,
+          activeTarget: data.activeTarget || "s",
+          isPatternDrill: Boolean(data.isPatternDrill),
+        };
       }
     }
 
@@ -78,10 +83,13 @@ interface WordElementProps {
   isCurrent: boolean;
   isPast: boolean;
   typedVal: string;
+  targetKey?: string;
 }
 
 export const WordElement = React.memo<WordElementProps>(
-  ({ word, wIdx, isCurrent, isPast, typedVal }) => {
+  ({ word, wIdx, isCurrent, isPast, typedVal, targetKey }) => {
+    const targetLower = targetKey ? targetKey.toLowerCase() : "";
+
     return (
       <div
         data-word-idx={wIdx}
@@ -95,18 +103,32 @@ export const WordElement = React.memo<WordElementProps>(
           };
           let borderClass = "";
 
+          const isTargetLetter = targetLower !== "" && targetChar.toLowerCase() === targetLower;
+
           if (isCurrent && cIdx >= typedVal.length) {
             charStyle = {
-              color: "var(--untyped-active, var(--untyped-color))",
-              opacity: 0.90,
+              color: isTargetLetter
+                ? "var(--accent-color)"
+                : "var(--untyped-active, var(--untyped-color))",
+              opacity: isTargetLetter ? 1.0 : 0.90,
             };
-          }
-
-          if (isPast && cIdx >= typedVal.length) {
+            if (isTargetLetter) {
+              borderClass = "border-b-[2px] border-[var(--accent-color)] pb-[1px]";
+            }
+          } else if (isPast && cIdx >= typedVal.length) {
             charStyle = {
               color: "var(--untyped-color)",
               opacity: 0.45,
             };
+          } else if (!isPast && !isCurrent) {
+            // Future upcoming words
+            if (isTargetLetter) {
+              charStyle = {
+                color: "var(--accent-color)",
+                opacity: 0.90,
+              };
+              borderClass = "border-b-[2px] border-[var(--accent-color)] pb-[1px]";
+            }
           }
 
           if (cIdx < typedVal.length) {
@@ -116,6 +138,7 @@ export const WordElement = React.memo<WordElementProps>(
                 color: "var(--typed-color)",
                 opacity: 1.0,
               };
+              borderClass = "";
             } else {
               charStyle = {
                 color: "var(--error-color)",
@@ -216,9 +239,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const [drillWordIndex, setDrillWordIndex] = useState<number>(0);
   const [drillCleanCount, setDrillCleanCount] = useState<number>(0);
 
+  const [activeTargetKey, setActiveTargetKey] = useState<string>(focusKey || "s");
+  const [isPatternDrill, setIsPatternDrill] = useState<boolean>(false);
+
   const lessonActiveTargetRef = useRef<string>("s");
   const repairQueueRef = useRef<string[]>([]);
   const repairedWordsSet = useRef<Set<string>>(new Set());
+  const missedWordsSet = useRef<Set<string>>(new Set());
+  const firstAttemptKeyIndices = useRef<Set<string>>(new Set());
   const learnKeystrokesRef = useRef<LearnKeystroke[]>([]);
   const lastKeyTimeRef = useRef<number>(0);
   const lastTypedCharRef = useRef<string>("");
@@ -295,6 +323,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       const batch = await requestWordBatch({ mode, tier, learnTrack, focusKey, count, recent: recentWords });
       if (batch.activeTarget) {
         lessonActiveTargetRef.current = batch.activeTarget;
+        setActiveTargetKey(batch.activeTarget);
+      }
+      if (batch.isPatternDrill !== undefined) {
+        setIsPatternDrill(batch.isPatternDrill);
       }
       setWords((prev) => (append ? [...prev, ...batch.words] : batch.words));
     },
@@ -413,6 +445,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           durationSeconds: Math.max(1.0, duration),
           keystrokes: learnKeystrokesRef.current,
           repairedWords: Array.from(repairedWordsSet.current),
+          missedWords: Array.from(missedWordsSet.current),
         }),
       });
 
@@ -460,6 +493,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     setDrillCleanCount(0);
     repairQueueRef.current = [];
     repairedWordsSet.current.clear();
+    missedWordsSet.current.clear();
+    firstAttemptKeyIndices.current.clear();
     learnKeystrokesRef.current = [];
     lastKeyTimeRef.current = 0;
     lastTypedCharRef.current = "";
@@ -494,6 +529,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       if (cancelled) return;
       if (batch.activeTarget) {
         lessonActiveTargetRef.current = batch.activeTarget;
+        setActiveTargetKey(batch.activeTarget);
+      }
+      if (batch.isPatternDrill !== undefined) {
+        setIsPatternDrill(batch.isPatternDrill);
       }
       setWords(batch.words);
     });
@@ -720,6 +759,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // Handle typing input
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const now = performance.now();
+    const flightMs = lastKeyTimeRef.current > 0 ? Math.round(now - lastKeyTimeRef.current) : 120;
+
     // ── Phase 2: Neural Lock-In Drill Specific Handling ─────────────────────
     if (inLockInDrill) {
       if (e.key === "Escape") {
@@ -769,6 +811,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         const target = drillWords[drillWordIndex] || "";
         const expectedChar = target[currentInput.length];
         lastTypedCharRef.current = char;
+
+        if (mode === "learn") {
+          learnKeystrokesRef.current.push({
+            expected: expectedChar || "",
+            actual: char,
+            flightMs: Math.min(2000, flightMs),
+            correct: char === expectedChar,
+            isDrill: true,
+            isFirstAttempt: false,
+          });
+        }
 
         if (char === expectedChar) {
           onKeyClick();
@@ -847,8 +900,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     }
 
     // Flight time tracking
-    const now = performance.now();
-    const flightMs = lastKeyTimeRef.current > 0 ? Math.round(now - lastKeyTimeRef.current) : 120;
     lastKeyTimeRef.current = now;
 
     // Log raw keystroke event
@@ -908,7 +959,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           actual: " ",
           flightMs: Math.min(1500, flightMs),
           correct: isCorrect,
+          isFirstAttempt: true,
+          isDrill: false,
         });
+        if (!isCorrect) {
+          missedWordsSet.current.add(targetWord);
+        }
         if (!isCorrect && repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
           repairQueueRef.current.push(targetWord);
         }
@@ -974,16 +1030,25 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       const isCharCorrect = char === expectedChar;
 
       if (mode === "learn") {
+        const charKey = `${currentWordIdx}:${currentInput.length}`;
+        const isFirstAttempt = !firstAttemptKeyIndices.current.has(charKey);
+        firstAttemptKeyIndices.current.add(charKey);
+
         learnKeystrokesRef.current.push({
           expected: expectedChar || "",
           actual: char,
           flightMs: Math.min(2000, flightMs),
           correct: isCharCorrect,
+          isFirstAttempt,
+          isDrill: false,
         });
 
         // Check hesitation on active target key (>450ms) or typo
         const targetLetter = lessonActiveTargetRef.current.toLowerCase();
         const isTargetChar = Boolean(expectedChar && expectedChar.toLowerCase() === targetLetter);
+        if (!isCharCorrect) {
+          missedWordsSet.current.add(targetWord);
+        }
         if (!isCharCorrect || (isTargetChar && flightMs > 450)) {
           if (repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
             repairQueueRef.current.push(targetWord);
@@ -1191,12 +1256,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               </span>
             </span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-[var(--inactive-color)] opacity-80 font-mono-custom">
-              {currentWordIdx < 5
+              {currentWordIdx < Math.max(1, Math.floor(words.length / 5))
                 ? "Phase A · Flow Warm-Up"
-                : currentWordIdx < 20
+                : currentWordIdx < Math.floor((words.length * 4) / 5)
                 ? "Phase B · Target Drill"
                 : "Phase C · Cadence Lock"}
             </span>
+            {isPatternDrill && (
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold font-mono-custom">
+                Pattern Drill
+              </span>
+            )}
           </div>
           <LiveSparkline dataPoints={liveWpmWindow} visible={showSparkline} />
         </div>
@@ -1344,6 +1414,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                   isCurrent={isCurrent}
                   isPast={isPast}
                   typedVal={typedVal}
+                  targetKey={mode === "learn" ? activeTargetKey : undefined}
                 />
               );
             })}

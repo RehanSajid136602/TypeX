@@ -32,7 +32,9 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
 
   const effectiveTarget = focusKey || activeTarget || "s";
   const targetStat = statusMap.get(effectiveTarget.toLowerCase());
-  const targetConf = targetStat ? Math.round(targetStat.confidence) : 40;
+  const targetAcc = targetStat && targetStat.firstAttemptAttempts && targetStat.firstAttemptAttempts > 0
+    ? Math.round((1 - (targetStat.firstAttemptErrors || 0) / targetStat.firstAttemptAttempts) * 100)
+    : (targetStat ? Math.round(targetStat.confidence) : 40);
 
   return (
     <div
@@ -45,7 +47,7 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
         {curriculumSequence.map((char) => {
           const stat = statusMap.get(char);
           const isCurrentActive = char.toLowerCase() === effectiveTarget.toLowerCase();
-          const isMastered = stat ? stat.confidence >= 85.0 : false;
+          const isMastered = stat ? stat.status === "mastered" : false;
           const isUnlocked = stat ? stat.status === "unlocked" || stat.status === "active" || isMastered : false;
 
           let stateClass = "";
@@ -55,7 +57,7 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
             stateClass = "border border-[var(--accent-color)] text-[var(--accent-color)] font-bold shadow-[0_0_8px_var(--accent-glow)] bg-white/[0.04]";
             bottomIndicator = (
               <span className="text-[8px] text-[var(--accent-color)] leading-none mt-0.5 font-normal">
-                {stat ? Math.round(stat.confidence) : 40}%
+                {targetAcc}%
               </span>
             );
           } else if (isMastered) {
@@ -80,7 +82,7 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
             <button
               key={char}
               onClick={() => onSelectFocusKey(char)}
-              title={`Key [ ${char.toUpperCase()} ] · Confidence: ${stat ? Math.round(stat.confidence) : 0}% (${stat ? stat.status : "locked"})`}
+              title={`Key [ ${char.toUpperCase()} ] · Status: ${stat ? stat.status : "locked"}`}
               className={`flex flex-col items-center justify-center w-6 h-8 rounded transition-all duration-150 cursor-pointer ${stateClass}`}
             >
               <span className="uppercase text-[11px] leading-none">{char}</span>
@@ -100,10 +102,10 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
         </span>
         <span className="text-[var(--inactive-color)] opacity-40">·</span>
         <span className="tabular-nums font-medium text-[var(--typed-color)]">
-          {targetConf}%
+          {targetAcc}%
         </span>
         <span className="text-[10px] text-[var(--inactive-color)] opacity-70">
-          / 85% to unlock
+          / 98% to unlock
         </span>
         {focusKey && (
           <button

@@ -167,21 +167,53 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
-  // Mouse activity listener for Focus Mode reveal
+  // Deliberate mouse movement gesture filter (>= 80px in <= 300ms) for Focus Mode reveal
+  const mouseTrackingRef = useRef<{ startX: number; startY: number; startTime: number }>({
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+  });
+
   useEffect(() => {
-    const handleMouseMove = () => {
-      setIsMouseActive(true);
-      if (mouseTimerRef.current) {
-        clearTimeout(mouseTimerRef.current);
+    const handleMouseMove = (e: MouseEvent) => {
+      const now = performance.now();
+      const tracker = mouseTrackingRef.current;
+      const dt = now - tracker.startTime;
+
+      if (dt > 300) {
+        tracker.startX = e.clientX;
+        tracker.startY = e.clientY;
+        tracker.startTime = now;
+        return;
       }
-      mouseTimerRef.current = setTimeout(() => {
+
+      const dx = e.clientX - tracker.startX;
+      const dy = e.clientY - tracker.startY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist >= 80) {
+        setIsMouseActive(true);
+        if (mouseTimerRef.current) {
+          clearTimeout(mouseTimerRef.current);
+        }
+        mouseTimerRef.current = setTimeout(() => {
+          setIsMouseActive(false);
+        }, 1500);
+      }
+    };
+
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsFocusMode(false);
         setIsMouseActive(false);
-      }, 1500);
+      }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("keydown", handleKeyDownGlobal);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("keydown", handleKeyDownGlobal);
       if (mouseTimerRef.current) clearTimeout(mouseTimerRef.current);
     };
   }, []);

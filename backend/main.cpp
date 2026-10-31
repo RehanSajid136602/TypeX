@@ -332,16 +332,31 @@ public:
         return tiers_.empty() ? std::string(kDefaultTier) : tiers_.front().tier;
     }
 
-    // Vocabulary pool for the adaptive learning engine.
+    // Vocabulary pool for the adaptive learning engine (english_10k then english_25k).
     const std::vector<std::string>& learnPool() const {
-        const TierList* preferred = findTier(kLearnTier);
-        if (preferred) return preferred->words;
-        size_t best = 0;
-        for (size_t i = 1; i < tiers_.size(); ++i) {
-            if (tiers_[i].words.size() > tiers_[best].words.size()) best = i;
+        static std::vector<std::string> combinedPool;
+        static bool initialized = false;
+        if (!initialized) {
+            std::unordered_set<std::string> seen;
+            const TierList* t10k = findTier("english_10k");
+            if (t10k) {
+                for (const auto& w : t10k->words) {
+                    if (seen.insert(w).second) combinedPool.push_back(w);
+                }
+            }
+            const TierList* t25k = findTier("english_25k");
+            if (t25k) {
+                for (const auto& w : t25k->words) {
+                    if (seen.insert(w).second) combinedPool.push_back(w);
+                }
+            }
+            if (combinedPool.empty()) {
+                const TierList* fallback = findTier(kDefaultTier);
+                if (fallback) combinedPool = fallback->words;
+            }
+            initialized = true;
         }
-        static const std::vector<std::string> empty;
-        return tiers_.empty() ? empty : tiers_[best].words;
+        return combinedPool;
     }
 
     // Vocabulary for a specific tier
@@ -903,6 +918,17 @@ int main(int argc, char** argv) {
     svr.Get("/api/learn/status", [&masteryEngine](const httplib::Request&, httplib::Response& res) {
         json status = masteryEngine.getStatus();
         res.set_content(status.dump(), "application/json");
+    });
+
+    // Endpoint 3b: GET /api/learn/coverage
+    svr.Get("/api/learn/coverage", [&masteryEngine, &corpus](const httplib::Request& req, httplib::Response& res) {
+        if (req.has_param("format") && req.get_param_value("format") == "text") {
+            std::string textReport = masteryEngine.generateCoverageReportText(corpus.learnPool());
+            res.set_content(textReport, "text/plain");
+        } else {
+            json rep = masteryEngine.generateCoverageReportJson(corpus.learnPool());
+            res.set_content(rep.dump(2), "application/json");
+        }
     });
 
     // Endpoint 4: GET /api/learn/lesson?track=phonetic_unlock&count=25&focusKey=c

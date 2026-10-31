@@ -40,9 +40,16 @@ Whether you are training finger biomechanics with adaptive rank-decay word sampl
 ## ✨ Key Features
 
 - 🏎️ **120fps Kinetic Arena**: Smooth multi-line rolling word display that scrolls continuously without paragraph breaks.
-- 🎯 **Scientific Motor-Learning Engine**: 
-  - Dynamic rank-decay frequency sampling across curated tiers (`1k`, `10k`, etc.).
-  - Biomechanical error heatmaps categorizing individual finger friction and letter confusions ($e.g.,\ \text{Expected} \rightarrow \text{Typed}$).
+- 🎯 **Strict Key-by-Key Curriculum & 98% Gate (`learn` mode)**:
+  - Strict key introduction order: `e, n, i, t, r, l, s, a, o, d, y, c, h, g, m, u, p, b, k, v, w, f, z, x, q, j`.
+  - Strict containment guarantee: learners never see locked characters.
+  - Markov Bigram Fallback (Pattern Drill) for early lessons with $< 40$ real vocabulary words.
+  - Strict 98% first-attempt unlock gate requiring $\ge 50$ clean keystrokes to advance.
+  - Neural Lock-In Drill with spaced repetition for missed tokens.
+- 🧘 **Distraction-Free Focus Mode**:
+  - Automatically hides all UI chrome on typing start.
+  - Survives drill transitions and idle pauses without flashing the screen.
+  - Restored only on deliberate swipe gestures ($\ge 80\text{px}$ in $\le 300\text{ms}$) or the Escape key.
 - 👤 **Offline User Profiles & SQLite Storage**:
   - Completely local persistence using an embedded SQLite WAL database.
   - Multi-profile management, instantaneous switching, and Guest Mode.

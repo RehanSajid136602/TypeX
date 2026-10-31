@@ -1,0 +1,28 @@
+Key  | Target | Unlocked Set                   | Real Words | Mode          
+------------------------------------------------------------------------
+1    | e      | e                              | 0          | Pattern Drill 
+2    | n      | en                             | 1          | Pattern Drill 
+3    | i      | eni                            | 4          | Pattern Drill 
+4    | t      | enit                           | 14         | Pattern Drill 
+5    | r      | enitr                          | 35         | Pattern Drill 
+6    | l      | enitrl                         | 49         | Real Words    
+7    | s      | enitrls                        | 159        | Real Words    
+8    | a      | enitrlsa                       | 466        | Real Words    
+9    | o      | enitrlsao                      | 352        | Real Words    
+10   | d      | enitrlsaod                     | 615        | Real Words    
+11   | y      | enitrlsaody                    | 300        | Real Words    
+12   | c      | enitrlsaodyc                   | 1106       | Real Words    
+13   | h      | enitrlsaodych                  | 916        | Real Words    
+14   | g      | enitrlsaodychg                 | 1268       | Real Words    
+15   | m      | enitrlsaodychgm                | 1693       | Real Words    
+16   | u      | enitrlsaodychgmu               | 2048       | Real Words    
+17   | p      | enitrlsaodychgmup              | 2750       | Real Words    
+18   | b      | enitrlsaodychgmupb             | 2128       | Real Words    
+19   | k      | enitrlsaodychgmupbk            | 1303       | Real Words    
+20   | v      | enitrlsaodychgmupbkv           | 1313       | Real Words    
+21   | w      | enitrlsaodychgmupbkvw          | 1331       | Real Words    
+22   | f      | enitrlsaodychgmupbkvwf         | 1698       | Real Words    
+23   | z      | enitrlsaodychgmupbkvwfz        | 391        | Real Words    
+24   | x      | enitrlsaodychgmupbkvwfzx       | 430        | Real Words    
+25   | q      | enitrlsaodychgmupbkvwfzxq      | 269        | Real Words    
+26   | j      | enitrlsaodychgmupbkvwfzxqj     | 350        | Real Words    

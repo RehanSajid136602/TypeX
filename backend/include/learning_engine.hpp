@@ -1,24 +1,35 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
 #include <cmath>
 #include <chrono>
-#include <mutex>
+#include <algorithm>
 #include <random>
+#include <mutex>
+#include <fstream>
+#include <iostream>
 #include <filesystem>
-#include <cctype>
-
+#include <sstream>
+#include <iomanip>
 #include "json.hpp"
 
 using json = nlohmann::json;
 
 namespace typex {
+
+// Single source of truth for phonetic unlock curriculum progression
+inline constexpr const char* CURRICULUM_KEY_ORDER = "enitrlsady chg mupb kvwf zxqj";
+inline constexpr size_t CURRICULUM_KEY_COUNT = 26;
+
+// Single source of truth for the 98% accuracy unlock gate
+inline constexpr double UNLOCK_ACCURACY = 98.0;
+inline constexpr int MIN_TARGET_ATTEMPTS = 50;
+inline const std::vector<char> CURRICULUM_KEY_SEQUENCE = {
+    'e','n','i','t','r','l','s','a','o','d','y','c','h','g','m','u','p','b','k','v','w','f','z','x','q','j'
+};
 
 enum class Finger {
     L_PINKY,
@@ -52,54 +63,34 @@ enum class Hand {
     NONE
 };
 
-inline std::string handToString(Hand h) {
-    switch (h) {
-        case Hand::LEFT:  return "LEFT";
-        case Hand::RIGHT: return "RIGHT";
-        default:          return "NONE";
-    }
-}
-
 enum class Row {
     NUMBER,
     TOP,
     HOME,
     BOTTOM,
+    SPACE
+};
+
+enum class TransitionType {
+    SAME_FINGER_BIGRAM,
+    SAME_HAND_ROLL,
+    ALTERNATION,
+    LATERAL_STRETCH,
     NONE
 };
 
 struct KeyLocation {
-    char key;
-    Finger finger;
-    Hand hand;
-    Row row;
-    int col; // 0 to 13
+    char key{'\0'};
+    Finger finger{Finger::NONE};
+    Hand hand{Hand::NONE};
+    Row row{Row::HOME};
+    int column{0};
 };
-
-enum class TransitionType {
-    ALTERNATION,
-    INWARD_ROLL,
-    OUTWARD_ROLL,
-    SAME_FINGER_BIGRAM,
-    ROW_SCISSOR,
-    NORMAL
-};
-
-inline std::string transitionToString(TransitionType t) {
-    switch (t) {
-        case TransitionType::ALTERNATION:        return "ALTERNATION";
-        case TransitionType::INWARD_ROLL:        return "INWARD_ROLL";
-        case TransitionType::OUTWARD_ROLL:       return "OUTWARD_ROLL";
-        case TransitionType::SAME_FINGER_BIGRAM: return "SAME_FINGER_BIGRAM";
-        case TransitionType::ROW_SCISSOR:        return "ROW_SCISSOR";
-        default:                                 return "NORMAL";
-    }
-}
 
 class BiomechanicalMap {
 public:
     BiomechanicalMap() {
-        initMap();
+        initKeyMap();
     }
 
     KeyLocation getKeyInfo(char c) const {
@@ -108,56 +99,50 @@ public:
         if (it != map_.end()) {
             return it->second;
         }
-        // Check for non-alphabet symbol directly
-        auto itSym = map_.find(c);
-        if (itSym != map_.end()) {
-            return itSym->second;
-        }
-        return {c, Finger::NONE, Hand::NONE, Row::NONE, 0};
+        return {c, Finger::NONE, Hand::NONE, Row::HOME, 0};
     }
 
-    TransitionType classifyTransition(char prev, char curr) const {
-        KeyLocation p = getKeyInfo(prev);
-        KeyLocation c = getKeyInfo(curr);
+    TransitionType classifyTransition(char from, char to) const {
+        KeyLocation locA = getKeyInfo(from);
+        KeyLocation locB = getKeyInfo(to);
 
-        if (p.hand == Hand::NONE || c.hand == Hand::NONE) {
-            return TransitionType::NORMAL;
+        if (locA.finger == Finger::NONE || locB.finger == Finger::NONE) {
+            return TransitionType::NONE;
         }
 
-        if (p.hand != c.hand) {
+        // Space transitions
+        if (from == ' ' || to == ' ') {
+            return TransitionType::ALTERNATION;
+        }
+
+        // Alternation: opposite hands
+        if (locA.hand != locB.hand) {
             return TransitionType::ALTERNATION;
         }
 
         // Same hand
-        char pLow = static_cast<char>(std::tolower(static_cast<unsigned char>(prev)));
-        char cLow = static_cast<char>(std::tolower(static_cast<unsigned char>(curr)));
-
-        if (p.finger == c.finger && pLow != cLow) {
+        if (locA.finger == locB.finger) {
+            // Same key repeated
+            if (from == to) {
+                return TransitionType::NONE;
+            }
             return TransitionType::SAME_FINGER_BIGRAM;
         }
 
-        int rowP = static_cast<int>(p.row);
-        int rowC = static_cast<int>(c.row);
-        if (std::abs(rowP - rowC) >= 2) {
-            return TransitionType::ROW_SCISSOR;
+        // Lateral stretch on same hand (col delta > 2)
+        int colDelta = std::abs(locA.column - locB.column);
+        if (colDelta > 2) {
+            return TransitionType::LATERAL_STRETCH;
         }
 
-        // Roll detection
-        if (p.hand == Hand::LEFT) {
-            if (p.col < c.col) return TransitionType::INWARD_ROLL;  // e.g. s->d->f
-            if (p.col > c.col) return TransitionType::OUTWARD_ROLL; // e.g. f->d->s
-        } else if (p.hand == Hand::RIGHT) {
-            if (p.col > c.col) return TransitionType::INWARD_ROLL;  // e.g. l->k->j
-            if (p.col < c.col) return TransitionType::OUTWARD_ROLL; // e.g. j->k->l
-        }
-
-        return TransitionType::NORMAL;
+        // Same hand roll
+        return TransitionType::SAME_HAND_ROLL;
     }
 
 private:
     std::unordered_map<char, KeyLocation> map_;
 
-    void initMap() {
+    void initKeyMap() {
         // Number row
         map_['`'] = {'`', Finger::L_PINKY, Hand::LEFT, Row::NUMBER, 0};
         map_['~'] = {'~', Finger::L_PINKY, Hand::LEFT, Row::NUMBER, 0};
@@ -171,7 +156,6 @@ private:
         map_['$'] = {'$', Finger::L_INDEX, Hand::LEFT, Row::NUMBER, 4};
         map_['5'] = {'5', Finger::L_INDEX, Hand::LEFT, Row::NUMBER, 5};
         map_['%'] = {'%', Finger::L_INDEX, Hand::LEFT, Row::NUMBER, 5};
-
         map_['6'] = {'6', Finger::R_INDEX, Hand::RIGHT, Row::NUMBER, 6};
         map_['^'] = {'^', Finger::R_INDEX, Hand::RIGHT, Row::NUMBER, 6};
         map_['7'] = {'7', Finger::R_INDEX, Hand::RIGHT, Row::NUMBER, 7};
@@ -248,6 +232,8 @@ struct KeyStat {
     double emaFlightMs{220.0};
     int64_t lastPracticedEpoch{0};
     std::string status{"locked"}; // "mastered", "active", "unlocked", "locked"
+    int firstAttemptAttempts{0};
+    int firstAttemptErrors{0};
 };
 
 struct FingerTelemetry {
@@ -275,14 +261,14 @@ public:
     }
 
     json getStatus() {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         return buildStatusJson();
     }
 
     json exportToJson() {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         json j;
-        j["version"] = 2;
+        j["version"] = 3;
 
         json keysJson = json::object();
         for (const auto& [k, stat] : keyStats_) {
@@ -292,7 +278,9 @@ public:
                 {"errors", stat.errors},
                 {"emaFlightMs", std::round(stat.emaFlightMs * 10.0) / 10.0},
                 {"lastPracticedEpoch", stat.lastPracticedEpoch},
-                {"status", stat.status}
+                {"status", stat.status},
+                {"firstAttemptAttempts", stat.firstAttemptAttempts},
+                {"firstAttemptErrors", stat.firstAttemptErrors}
             };
         }
         j["keyStats"] = keysJson;
@@ -329,24 +317,40 @@ public:
         }
         j["trackActiveTarget"] = trJson;
 
+        json repPoolJson = json::array();
+        for (const auto& w : repairedWordsPool_) {
+            repPoolJson.push_back(w);
+        }
+        j["repairedWordsPool"] = repPoolJson;
+
         return j;
     }
 
     void loadFromJson(const json& j) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         initDefaultProfile();
+
+        int loadedVer = j.value("version", 2);
 
         if (j.contains("keyStats") && j["keyStats"].is_object()) {
             for (auto& [k, v] : j["keyStats"].items()) {
-                keyStats_[k] = {
-                    k,
-                    v.value("confidence", 0.0),
-                    v.value("attempts", 0),
-                    v.value("errors", 0),
-                    v.value("emaFlightMs", 220.0),
-                    v.value("lastPracticedEpoch", (int64_t)0),
-                    v.value("status", "locked")
-                };
+                std::string st = v.value("status", "locked");
+                double conf = v.value("confidence", 0.0);
+                int att = v.value("attempts", 0);
+                int err = v.value("errors", 0);
+                double ema = v.value("emaFlightMs", 220.0);
+                int64_t ep = v.value("lastPracticedEpoch", (int64_t)0);
+                int fAtt = v.value("firstAttemptAttempts", 0);
+                int fErr = v.value("firstAttemptErrors", 0);
+
+                if (loadedVer < 3) {
+                    // Migration from v2: preserve mastered keys
+                    if (conf >= 85.0) {
+                        st = "mastered";
+                    }
+                }
+
+                keyStats_[k] = {k, conf, att, err, ema, ep, st, fAtt, fErr};
             }
         }
 
@@ -383,10 +387,35 @@ public:
                 trackActiveTarget_[k] = v.get<std::string>();
             }
         }
+
+        if (j.contains("repairedWordsPool") && j["repairedWordsPool"].is_array()) {
+            repairedWordsPool_.clear();
+            for (const auto& item : j["repairedWordsPool"]) {
+                if (item.is_string()) {
+                    repairedWordsPool_.push_back(item.get<std::string>());
+                }
+            }
+        }
+
+        // Ensure activeTarget in phonetic_unlock is properly aligned
+        std::string activeT = trackActiveTarget_["phonetic_unlock"];
+        if (keyStats_.count(activeT) && keyStats_[activeT].status == "mastered") {
+            // Find next unmastered in sequence
+            for (char c : CURRICULUM_KEY_SEQUENCE) {
+                std::string s(1, c);
+                if (!keyStats_.count(s) || keyStats_[s].status != "mastered") {
+                    keyStats_[s].status = "active";
+                    trackActiveTarget_["phonetic_unlock"] = s;
+                    break;
+                }
+            }
+        }
     }
 
     json synthesizeLesson(const std::string& track, size_t count, const std::string& focusKeyOverride, const std::vector<std::string>& corpus) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+        ensureBigramTable(corpus);
 
         std::string effectiveTrack = track.empty() ? "phonetic_unlock" : track;
         std::string activeTarget = getActiveTargetForTrack(effectiveTrack);
@@ -401,19 +430,21 @@ public:
 
         std::vector<std::string> unlockedKeys = getUnlockedKeys();
 
-        // 3-Phase synthesis
         std::vector<std::string> lessonWords;
         lessonWords.reserve(count);
+        bool isPatternDrill = false;
 
         if (effectiveTrack == "cpp_symbols") {
             synthesizeCppLesson(lessonWords, count, activeTarget);
+        } else if (effectiveTrack == "phonetic_unlock") {
+            synthesizeStrictLesson(lessonWords, count, activeTarget, isPatternDrill, corpus);
         } else {
-            synthesizeTextLesson(lessonWords, count, effectiveTrack, activeTarget, unlockedKeys, corpus);
+            synthesizeTrackLesson(lessonWords, count, effectiveTrack, activeTarget, unlockedKeys, corpus);
         }
 
         size_t total = lessonWords.size();
-        size_t pAEnd = std::min<size_t>(4, total > 0 ? total - 1 : 0);
-        size_t pBEnd = std::min<size_t>(19, total > 0 ? total - 1 : 0);
+        size_t pAEnd = std::min<size_t>(count / 5 > 0 ? (count / 5) - 1 : 0, total > 0 ? total - 1 : 0);
+        size_t pBEnd = std::min<size_t>(pAEnd + (count * 3 / 5), total > 0 ? total - 1 : 0);
         size_t pCEnd = total > 0 ? total - 1 : 0;
 
         json res = {
@@ -422,6 +453,7 @@ public:
             {"targetConfidence", std::round(targetConfidence * 10.0) / 10.0},
             {"unlockedKeys", unlockedKeys},
             {"words", lessonWords},
+            {"isPatternDrill", isPatternDrill},
             {"phaseBreakdown", {
                 {"warmup", {0, pAEnd}},
                 {"targetDrill", {pAEnd + 1, pBEnd}},
@@ -433,14 +465,49 @@ public:
     }
 
     json submitTelemetry(const json& payload) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
 
         std::string track = payload.value("track", "phonetic_unlock");
         std::string activeTarget = payload.value("activeTarget", "s");
+        std::transform(activeTarget.begin(), activeTarget.end(), activeTarget.begin(), ::tolower);
 
         double prevConfidence = 0.0;
         if (keyStats_.count(activeTarget)) {
             prevConfidence = keyStats_[activeTarget].confidence;
+        }
+
+        bool isDrill = payload.value("isDrill", false);
+
+        int targetLessonAttempts = 0;
+        int targetLessonErrors = 0;
+        std::vector<std::string> missedWords;
+        std::unordered_set<std::string> missedWordsSet;
+
+        if (payload.contains("missedWords") && payload["missedWords"].is_array()) {
+            for (const auto& w : payload["missedWords"]) {
+                if (w.is_string()) {
+                    std::string wordStr = w.get<std::string>();
+                    if (missedWordsSet.insert(wordStr).second) {
+                        missedWords.push_back(wordStr);
+                        // Add to repaired words pool
+                        repairedWordsPool_.push_back(wordStr);
+                        if (repairedWordsPool_.size() > 50) {
+                            repairedWordsPool_.erase(repairedWordsPool_.begin());
+                        }
+                    }
+                }
+            }
+        }
+
+        if (payload.contains("repairedWords") && payload["repairedWords"].is_array()) {
+            for (const auto& w : payload["repairedWords"]) {
+                if (w.is_string()) {
+                    repairedWordsPool_.push_back(w.get<std::string>());
+                    if (repairedWordsPool_.size() > 50) {
+                        repairedWordsPool_.erase(repairedWordsPool_.begin());
+                    }
+                }
+            }
         }
 
         if (payload.contains("keystrokes") && payload["keystrokes"].is_array()) {
@@ -450,15 +517,17 @@ public:
                 std::string actStr = item.value("actual", "");
                 double flightMs = item.value("flightMs", 180.0);
                 bool correct = item.value("correct", true);
+                bool isDrillStroke = item.value("isDrill", isDrill);
+                bool isFirstAttempt = item.value("isFirstAttempt", true);
 
                 if (expStr.empty()) continue;
                 char expChar = expStr[0];
                 std::string keyKey = expStr;
                 std::transform(keyKey.begin(), keyKey.end(), keyKey.begin(), ::tolower);
 
-                // Update KeyStat
+                // Update KeyStat general stats
                 if (!keyStats_.count(keyKey)) {
-                    keyStats_[keyKey] = {keyKey, 0.0, 0, 0, 220.0, 0, "locked"};
+                    keyStats_[keyKey] = {keyKey, 0.0, 0, 0, 220.0, 0, "locked", 0, 0};
                 }
                 auto& ks = keyStats_[keyKey];
                 ks.attempts += 1;
@@ -474,13 +543,21 @@ public:
                     ks.emaFlightMs = 0.85 * ks.emaFlightMs + 0.15 * flightMs;
                 }
 
-                // Calculate confidence
+                // Confidence
                 double speedScore = std::clamp((240.0 - ks.emaFlightMs) / 1.4, 0.0, 100.0);
                 double accRatio = (ks.attempts > 0) ? std::clamp(1.0 - (static_cast<double>(ks.errors) / ks.attempts), 0.0, 1.0) : 1.0;
                 double accScore = std::pow(accRatio, 2.5) * 100.0;
                 ks.confidence = std::clamp((accScore * 0.65) + (speedScore * 0.35), 0.0, 100.0);
                 ks.lastPracticedEpoch = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
+
+                // 98% Unlock Gate tracking: only evaluate non-drill first-attempt keystrokes for active target key
+                if (!isDrillStroke && keyKey == activeTarget && isFirstAttempt) {
+                    targetLessonAttempts += 1;
+                    if (!correct) {
+                        targetLessonErrors += 1;
+                    }
+                }
 
                 // Finger Telemetry
                 KeyLocation loc = bioMap_.getKeyInfo(expChar);
@@ -519,35 +596,72 @@ public:
             }
         }
 
-        // Check if active target mastered and needs advancing
-        double newConfidence = prevConfidence;
+        // Gate evaluation
         bool unlockedNewTarget = false;
+        bool passedGate = false;
+        double targetAccuracy = 0.0;
+        int targetAttempts = targetLessonAttempts;
+        int targetErrors = targetLessonErrors;
+
+        if (targetAttempts > 0) {
+            targetAccuracy = (1.0 - static_cast<double>(targetErrors) / targetAttempts) * 100.0;
+        }
+
+        // Record on key stat
+        if (keyStats_.count(activeTarget)) {
+            keyStats_[activeTarget].firstAttemptAttempts += targetAttempts;
+            keyStats_[activeTarget].firstAttemptErrors += targetErrors;
+        }
+
         std::string newActiveTarget = activeTarget;
 
-        if (keyStats_.count(activeTarget)) {
-            newConfidence = keyStats_[activeTarget].confidence;
-            if (newConfidence >= 85.0) {
-                keyStats_[activeTarget].status = "mastered";
-                // Unlock next in sequence
+        if (track == "phonetic_unlock") {
+            if (targetAttempts >= MIN_TARGET_ATTEMPTS && targetAccuracy >= UNLOCK_ACCURACY) {
+                passedGate = true;
+                if (keyStats_.count(activeTarget)) {
+                    keyStats_[activeTarget].status = "mastered";
+                }
                 auto nextOpt = advanceTrack(track, activeTarget);
                 if (nextOpt.first) {
                     unlockedNewTarget = true;
                     newActiveTarget = nextOpt.second;
                 }
-            } else if (keyStats_[activeTarget].status == "locked") {
-                keyStats_[activeTarget].status = "active";
+            } else {
+                passedGate = false;
+                if (keyStats_.count(activeTarget) && keyStats_[activeTarget].status == "locked") {
+                    keyStats_[activeTarget].status = "active";
+                }
+            }
+        } else {
+            // Other tracks
+            double newConf = keyStats_.count(activeTarget) ? keyStats_[activeTarget].confidence : 0.0;
+            if (newConf >= 85.0) {
+                passedGate = true;
+                if (keyStats_.count(activeTarget)) {
+                    keyStats_[activeTarget].status = "mastered";
+                }
+                auto nextOpt = advanceTrack(track, activeTarget);
+                if (nextOpt.first) {
+                    unlockedNewTarget = true;
+                    newActiveTarget = nextOpt.second;
+                }
             }
         }
 
         saveProfile();
 
-        // Prepare delta report
+        double newConfidence = keyStats_.count(activeTarget) ? keyStats_[activeTarget].confidence : prevConfidence;
+
         json deltaReport = {
             {"previousConfidence", std::round(prevConfidence * 10.0) / 10.0},
             {"newConfidence", std::round(newConfidence * 10.0) / 10.0},
             {"confidenceDelta", std::round((newConfidence - prevConfidence) * 10.0) / 10.0},
             {"unlockedNewTarget", unlockedNewTarget},
             {"newActiveTarget", newActiveTarget},
+            {"passedGate", passedGate},
+            {"targetAttempts", targetAttempts},
+            {"targetAccuracy", std::round(targetAccuracy * 10.0) / 10.0},
+            {"missedWords", missedWords},
             {"weakestFinger", getWeakestFingerJson()},
             {"topConfusions", getTopConfusionsJson(3)},
             {"sfbBottlenecks", getSfbBottlenecksJson(3)},
@@ -557,9 +671,68 @@ public:
         return deltaReport;
     }
 
+    std::string generateCoverageReportText(const std::vector<std::string>& corpus) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::ostringstream ss;
+        ss << "Key  | Target | Unlocked Set                   | Real Words | Mode          \n";
+        ss << "------------------------------------------------------------------------\n";
+
+        for (size_t i = 0; i < CURRICULUM_KEY_SEQUENCE.size(); ++i) {
+            char k = CURRICULUM_KEY_SEQUENCE[i];
+            std::unordered_set<char> unlocked(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + i + 1);
+            std::string unlStr(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + i + 1);
+
+            int realCount = 0;
+            for (const auto& w : corpus) {
+                if (w.size() < 2 || w.size() > 8) continue;
+                bool ok = true;
+                for (char c : w) if (!unlocked.count(c)) { ok = false; break; }
+                if (!ok) continue;
+                if (w.find(k) != std::string::npos) realCount++;
+            }
+
+            std::string mode = (realCount >= 40) ? "Real Words" : "Pattern Drill";
+            ss << std::left << std::setw(4) << (i + 1) << " | "
+               << std::setw(6) << k << " | "
+               << std::setw(30) << unlStr << " | "
+               << std::setw(10) << realCount << " | "
+               << std::setw(14) << mode << "\n";
+        }
+        return ss.str();
+    }
+
+    json generateCoverageReportJson(const std::vector<std::string>& corpus) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        json rows = json::array();
+
+        for (size_t i = 0; i < CURRICULUM_KEY_SEQUENCE.size(); ++i) {
+            char k = CURRICULUM_KEY_SEQUENCE[i];
+            std::unordered_set<char> unlocked(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + i + 1);
+            std::string unlStr(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + i + 1);
+
+            int realCount = 0;
+            for (const auto& w : corpus) {
+                if (w.size() < 2 || w.size() > 8) continue;
+                bool ok = true;
+                for (char c : w) if (!unlocked.count(c)) { ok = false; break; }
+                if (!ok) continue;
+                if (w.find(k) != std::string::npos) realCount++;
+            }
+
+            rows.push_back({
+                {"step", i + 1},
+                {"target", std::string(1, k)},
+                {"unlockedKeys", unlStr},
+                {"realWordCount", realCount},
+                {"isPatternDrill", realCount < 40}
+            });
+        }
+        return rows;
+    }
+
 private:
     std::string profilePath_;
-    std::mutex mutex_;
+    std::recursive_mutex mutex_;
     BiomechanicalMap bioMap_;
 
     // In-memory state
@@ -574,11 +747,14 @@ private:
     };
     std::unordered_map<std::string, SfbItem> sfbStats_;
 
-    // Track progression
-    const std::vector<char> phoneticSeq_ = {
-        'e','n','i','t','r','l','s','a','o','d','y','c','h','g','m','u','p','b','k','v','w','f','z','x','q','j'
-    };
+    // Bigram transition frequencies from corpus
+    std::unordered_map<char, std::unordered_map<char, int>> bigramTable_;
+    bool bigramTableBuilt_{false};
 
+    // Spaced repetition queue for missed words
+    std::vector<std::string> repairedWordsPool_;
+
+    // Track progression
     const std::vector<std::string> trigramChunks_ = {
         "the", "ing", "and", "tion", "ent", "for", "ter", "tha", "ere", "ate",
         "ver", "his", "con", "res", "pro", "com", "all", "nce", "men", "ith",
@@ -592,6 +768,95 @@ private:
 
     std::unordered_map<std::string, std::string> trackActiveTarget_;
 
+    void ensureBigramTable(const std::vector<std::string>& corpus) {
+        if (bigramTableBuilt_ && !bigramTable_.empty()) return;
+        for (const auto& w : corpus) {
+            if (w.size() >= 2) {
+                for (size_t i = 0; i < w.size() - 1; ++i) {
+                    char a = static_cast<char>(std::tolower(static_cast<unsigned char>(w[i])));
+                    char b = static_cast<char>(std::tolower(static_cast<unsigned char>(w[i+1])));
+                    if (a >= 'a' && a <= 'z' && b >= 'a' && b <= 'z') {
+                        bigramTable_[a][b]++;
+                    }
+                }
+            }
+        }
+        bigramTableBuilt_ = true;
+    }
+
+    std::string generatePseudoWord(
+        const std::vector<char>& allowedVec,
+        char target,
+        size_t minLen,
+        size_t maxLen,
+        bool requireTarget,
+        std::mt19937& rng
+    ) {
+        if (allowedVec.empty()) return "";
+        if (allowedVec.size() == 1) {
+            std::uniform_int_distribution<size_t> lenDist(minLen, maxLen);
+            return std::string(lenDist(rng), allowedVec[0]);
+        }
+
+        std::uniform_int_distribution<size_t> lenDist(minLen, maxLen);
+        std::uniform_int_distribution<size_t> charDist(0, allowedVec.size() - 1);
+
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            size_t targetLen = lenDist(rng);
+            std::string res;
+            res.reserve(targetLen);
+
+            char curr = (requireTarget && (rng() % 10 < 4) && target != '\0')
+                ? target
+                : allowedVec[charDist(rng)];
+            res.push_back(curr);
+
+            while (res.size() < targetLen) {
+                auto it = bigramTable_.find(curr);
+                std::vector<std::pair<char, int>> cands;
+                if (it != bigramTable_.end()) {
+                    for (char c : allowedVec) {
+                        auto it2 = it->second.find(c);
+                        if (it2 != it->second.end() && it2->second > 0) {
+                            cands.push_back({c, it2->second});
+                        }
+                    }
+                }
+                if (!cands.empty()) {
+                    int totalW = 0;
+                    for (const auto& p : cands) totalW += p.second;
+                    std::uniform_int_distribution<int> wDist(1, totalW);
+                    int r = wDist(rng);
+                    char nextC = cands[0].first;
+                    for (const auto& p : cands) {
+                        r -= p.second;
+                        if (r <= 0) { nextC = p.first; break; }
+                    }
+                    curr = nextC;
+                } else {
+                    curr = allowedVec[charDist(rng)];
+                }
+                res.push_back(curr);
+            }
+
+            if (requireTarget && target != '\0') {
+                int tc = 0;
+                for (char c : res) if (c == target) tc++;
+                if (tc >= 1 && tc <= 3) return res;
+            } else {
+                return res;
+            }
+        }
+
+        // Fallback
+        size_t targetLen = lenDist(rng);
+        std::string fallback;
+        fallback.reserve(targetLen);
+        if (requireTarget && target != '\0') fallback.push_back(target);
+        while (fallback.size() < targetLen) fallback.push_back(allowedVec[charDist(rng)]);
+        return fallback;
+    }
+
     void initDefaultProfile() {
         // Init finger telemetry
         std::vector<Finger> fingers = {
@@ -603,23 +868,16 @@ private:
             fingerStats_[name] = {name, 210.0, 95.0, 0, 0};
         }
 
-        // Init 26 letters
-        for (char c = 'a'; c <= 'z'; ++c) {
+        // Init 26 letters as locked
+        for (char c : CURRICULUM_KEY_SEQUENCE) {
             std::string s(1, c);
-            keyStats_[s] = {s, 0.0, 0, 0, 220.0, 0, "locked"};
+            keyStats_[s] = {s, 0.0, 0, 0, 220.0, 0, "locked", 0, 0};
         }
 
-        // First 6 core letters unlocked at confidence 86.0
-        std::vector<char> core = {'e', 'n', 'i', 't', 'r', 'l'};
-        for (char c : core) {
-            std::string s(1, c);
-            keyStats_[s] = {s, 86.0, 25, 1, 115.0, 0, "mastered"};
-        }
+        // Strict key-by-key: first key 'e' is active, 0 keys unlocked initially
+        keyStats_["e"] = {"e", 40.0, 0, 0, 220.0, 0, "active", 0, 0};
 
-        // 's' is active target
-        keyStats_["s"] = {"s", 40.0, 6, 2, 192.0, 0, "active"};
-
-        trackActiveTarget_["phonetic_unlock"] = "s";
+        trackActiveTarget_["phonetic_unlock"] = "e";
         trackActiveTarget_["trigram_chunks"] = "the";
         trackActiveTarget_["sfb_destroyer"] = "de";
         trackActiveTarget_["finger_gym"] = "L_PINKY";
@@ -636,54 +894,7 @@ private:
             std::ifstream f(profilePath_);
             if (!f.is_open()) return;
             json j = json::parse(f);
-
-            if (j.contains("keyStats") && j["keyStats"].is_object()) {
-                for (auto& [k, v] : j["keyStats"].items()) {
-                    keyStats_[k] = {
-                        k,
-                        v.value("confidence", 0.0),
-                        v.value("attempts", 0),
-                        v.value("errors", 0),
-                        v.value("emaFlightMs", 220.0),
-                        v.value("lastPracticedEpoch", (int64_t)0),
-                        v.value("status", "locked")
-                    };
-                }
-            }
-
-            if (j.contains("fingerStats") && j["fingerStats"].is_object()) {
-                for (auto& [k, v] : j["fingerStats"].items()) {
-                    fingerStats_[k] = {
-                        k,
-                        v.value("avgMs", 210.0),
-                        v.value("accuracy", 95.0),
-                        v.value("keystrokes", 0),
-                        v.value("errors", 0)
-                    };
-                }
-            }
-
-            if (j.contains("confusionCounts") && j["confusionCounts"].is_object()) {
-                for (auto& [k, v] : j["confusionCounts"].items()) {
-                    confusionCounts_[k] = v.get<int>();
-                }
-            }
-
-            if (j.contains("sfbStats") && j["sfbStats"].is_object()) {
-                for (auto& [k, v] : j["sfbStats"].items()) {
-                    sfbStats_[k] = {
-                        k,
-                        v.value("avgMs", 220.0),
-                        v.value("count", 0)
-                    };
-                }
-            }
-
-            if (j.contains("trackActiveTarget") && j["trackActiveTarget"].is_object()) {
-                for (auto& [k, v] : j["trackActiveTarget"].items()) {
-                    trackActiveTarget_[k] = v.get<std::string>();
-                }
-            }
+            loadFromJson(j);
         } catch (const std::exception& e) {
             std::cerr << "[WARN] Failed to load mastery profile: " << e.what() << ". Using defaults." << std::endl;
         }
@@ -691,60 +902,12 @@ private:
 
     void saveProfile() {
         try {
-            // Ensure directory exists
             std::filesystem::path p(profilePath_);
             if (p.has_parent_path()) {
                 std::filesystem::create_directories(p.parent_path());
             }
 
-            json j;
-            j["version"] = 2;
-
-            json keysJson = json::object();
-            for (const auto& [k, stat] : keyStats_) {
-                keysJson[k] = {
-                    {"confidence", std::round(stat.confidence * 10.0) / 10.0},
-                    {"attempts", stat.attempts},
-                    {"errors", stat.errors},
-                    {"emaFlightMs", std::round(stat.emaFlightMs * 10.0) / 10.0},
-                    {"lastPracticedEpoch", stat.lastPracticedEpoch},
-                    {"status", stat.status}
-                };
-            }
-            j["keyStats"] = keysJson;
-
-            json fJson = json::object();
-            for (const auto& [k, stat] : fingerStats_) {
-                fJson[k] = {
-                    {"avgMs", std::round(stat.avgMs * 10.0) / 10.0},
-                    {"accuracy", std::round(stat.accuracy * 10.0) / 10.0},
-                    {"keystrokes", stat.keystrokes},
-                    {"errors", stat.errors}
-                };
-            }
-            j["fingerStats"] = fJson;
-
-            json confJson = json::object();
-            for (const auto& [k, cnt] : confusionCounts_) {
-                confJson[k] = cnt;
-            }
-            j["confusionCounts"] = confJson;
-
-            json sfbJson = json::object();
-            for (const auto& [k, item] : sfbStats_) {
-                sfbJson[k] = {
-                    {"avgMs", std::round(item.avgMs * 10.0) / 10.0},
-                    {"count", item.count}
-                };
-            }
-            j["sfbStats"] = sfbJson;
-
-            json trJson = json::object();
-            for (const auto& [k, target] : trackActiveTarget_) {
-                trJson[k] = target;
-            }
-            j["trackActiveTarget"] = trJson;
-
+            json j = exportToJson();
             std::ofstream out(profilePath_);
             if (out.is_open()) {
                 out << j.dump(2);
@@ -756,9 +919,9 @@ private:
 
     std::pair<bool, std::string> advanceTrack(const std::string& track, const std::string& currentTarget) {
         if (track == "phonetic_unlock") {
-            char curr = currentTarget.empty() ? 's' : currentTarget[0];
-            auto it = std::find(phoneticSeq_.begin(), phoneticSeq_.end(), curr);
-            if (it != phoneticSeq_.end() && it + 1 != phoneticSeq_.end()) {
+            char curr = currentTarget.empty() ? 'e' : currentTarget[0];
+            auto it = std::find(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.end(), curr);
+            if (it != CURRICULUM_KEY_SEQUENCE.end() && it + 1 != CURRICULUM_KEY_SEQUENCE.end()) {
                 char nextC = *(it + 1);
                 std::string nextStr(1, nextC);
                 keyStats_[nextStr].status = "active";
@@ -790,17 +953,17 @@ private:
         if (trackActiveTarget_.count(track)) {
             return trackActiveTarget_[track];
         }
-        if (track == "phonetic_unlock") return "s";
+        if (track == "phonetic_unlock") return "e";
         if (track == "trigram_chunks") return "the";
         if (track == "sfb_destroyer") return "de";
         if (track == "finger_gym") return "L_PINKY";
         if (track == "cpp_symbols") return ";";
-        return "s";
+        return "e";
     }
 
     std::vector<std::string> getUnlockedKeys() const {
         std::vector<std::string> keys;
-        for (char c : phoneticSeq_) {
+        for (char c : CURRICULUM_KEY_SEQUENCE) {
             std::string s(1, c);
             if (keyStats_.count(s)) {
                 if (keyStats_.at(s).status == "mastered" || keyStats_.at(s).status == "unlocked" || keyStats_.at(s).status == "active") {
@@ -808,7 +971,7 @@ private:
                 }
             }
         }
-        if (keys.empty()) keys = {"e", "n", "i", "t", "r", "l", "s"};
+        if (keys.empty()) keys = {"e"};
         return keys;
     }
 
@@ -825,7 +988,7 @@ private:
 
     json getKeyStatusesJson() const {
         json arr = json::array();
-        for (char c : phoneticSeq_) {
+        for (char c : CURRICULUM_KEY_SEQUENCE) {
             std::string s(1, c);
             if (keyStats_.count(s)) {
                 const auto& stat = keyStats_.at(s);
@@ -835,7 +998,9 @@ private:
                     {"emaFlightMs", std::round(stat.emaFlightMs * 10.0) / 10.0},
                     {"attempts", stat.attempts},
                     {"errors", stat.errors},
-                    {"status", stat.status}
+                    {"status", stat.status},
+                    {"firstAttemptAttempts", stat.firstAttemptAttempts},
+                    {"firstAttemptErrors", stat.firstAttemptErrors}
                 });
             }
         }
@@ -920,7 +1085,173 @@ private:
         return arr;
     }
 
-    void synthesizeTextLesson(
+    void synthesizeStrictLesson(
+        std::vector<std::string>& out,
+        size_t count,
+        const std::string& targetStr,
+        bool& outIsPatternDrill,
+        const std::vector<std::string>& corpus
+    ) {
+        char key = targetStr.empty() ? 'e' : static_cast<char>(std::tolower(static_cast<unsigned char>(targetStr[0])));
+
+        // Find position of key in sequence
+        auto it = std::find(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.end(), key);
+        size_t keyIdx = (it != CURRICULUM_KEY_SEQUENCE.end()) ? std::distance(CURRICULUM_KEY_SEQUENCE.begin(), it) : 0;
+
+        std::vector<char> unlockedVec(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + keyIdx);
+        std::vector<char> allowedVec(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.begin() + keyIdx + 1);
+
+        std::unordered_set<char> unlockedSet(unlockedVec.begin(), unlockedVec.end());
+        std::unordered_set<char> allowedSet(allowedVec.begin(), allowedVec.end());
+
+        std::vector<std::string> realWords;
+        std::vector<std::string> warmupReals;
+
+        for (const auto& w : corpus) {
+            if (w.size() < 2 || w.size() > 8) continue;
+            bool ok = true;
+            for (char c : w) {
+                if (!allowedSet.count(c)) { ok = false; break; }
+            }
+            if (!ok) continue;
+
+            int tc = 0;
+            for (char c : w) if (c == key) tc++;
+
+            if (tc >= 1 && tc <= 3) {
+                realWords.push_back(w);
+            } else if (tc == 0) {
+                warmupReals.push_back(w);
+            }
+        }
+
+        outIsPatternDrill = (realWords.size() < 40);
+
+        static thread_local std::mt19937 rng(std::random_device{}());
+
+        size_t targetTotal = std::max<size_t>(count, 25);
+        size_t targetWarmupCount = std::max<size_t>(4, targetTotal / 5);
+        size_t targetDrillCount = std::max<size_t>(15, (targetTotal * 3) / 5);
+        size_t targetCadenceCount = targetTotal > (targetWarmupCount + targetDrillCount)
+            ? targetTotal - (targetWarmupCount + targetDrillCount)
+            : 5;
+
+        std::vector<std::string> phaseA, phaseB, phaseC;
+        std::unordered_set<std::string> used;
+
+        // Spaced repetition injection from repairedWordsPool_
+        std::vector<std::string> eligibleRepairs;
+        for (const auto& w : repairedWordsPool_) {
+            bool ok = true;
+            for (char c : w) if (!allowedSet.count(c)) { ok = false; break; }
+            if (ok) eligibleRepairs.push_back(w);
+        }
+
+        // Phase A: Warm-Up (strictly unlocked letters only)
+        std::shuffle(warmupReals.begin(), warmupReals.end(), rng);
+        for (const auto& w : warmupReals) {
+            if (phaseA.size() >= targetWarmupCount) break;
+            if (!used.count(w)) {
+                phaseA.push_back(w);
+                used.insert(w);
+            }
+        }
+
+        const auto& pAVec = unlockedVec.empty() ? allowedVec : unlockedVec;
+        int retries = 0;
+        while (phaseA.size() < targetWarmupCount && retries < 150) {
+            retries++;
+            std::string pw = generatePseudoWord(pAVec, '\0', 3, 5, false, rng);
+            if (keyIdx <= 1 || !used.count(pw)) {
+                phaseA.push_back(pw);
+                used.insert(pw);
+            }
+        }
+
+        // Phase B: Target Drill (contain target key 1-3 times)
+        // Spaced repetition: inject up to 3 eligible repaired words
+        for (const auto& w : eligibleRepairs) {
+            if (phaseB.size() >= 3) break;
+            if (w.find(key) != std::string::npos && !used.count(w)) {
+                phaseB.push_back(w);
+                used.insert(w);
+            }
+        }
+
+        std::shuffle(realWords.begin(), realWords.end(), rng);
+        for (const auto& w : realWords) {
+            if (phaseB.size() >= targetDrillCount) break;
+            if (!used.count(w)) {
+                phaseB.push_back(w);
+                used.insert(w);
+            }
+        }
+
+        retries = 0;
+        while (phaseB.size() < targetDrillCount && retries < 300) {
+            retries++;
+            std::string pw = generatePseudoWord(allowedVec, key, 3, 6, true, rng);
+            if (keyIdx <= 1 || !used.count(pw)) {
+                phaseB.push_back(pw);
+                used.insert(pw);
+            }
+        }
+
+        // Phase C: Cadence (rhythm & alternation)
+        std::vector<std::string> cadencePool;
+        for (const auto& w : realWords) if (!used.count(w)) cadencePool.push_back(w);
+        for (const auto& w : warmupReals) if (!used.count(w)) cadencePool.push_back(w);
+        std::shuffle(cadencePool.begin(), cadencePool.end(), rng);
+
+        for (const auto& w : cadencePool) {
+            if (phaseC.size() >= targetCadenceCount) break;
+            phaseC.push_back(w);
+            used.insert(w);
+        }
+
+        retries = 0;
+        while (phaseC.size() < targetCadenceCount && retries < 150) {
+            retries++;
+            bool reqT = (rng() % 2 == 0);
+            std::string pw = generatePseudoWord(allowedVec, key, 3, 5, reqT, rng);
+            if (keyIdx <= 1 || !used.count(pw)) {
+                phaseC.push_back(pw);
+                used.insert(pw);
+            }
+        }
+
+        // Target volume guarantee: at least 50 target letters across lesson
+        int totalTargetChars = 0;
+        for (const auto& w : phaseB) for (char c : w) if (c == key) totalTargetChars++;
+        for (const auto& w : phaseC) for (char c : w) if (c == key) totalTargetChars++;
+
+        retries = 0;
+        while (totalTargetChars < MIN_TARGET_ATTEMPTS && retries < 300) {
+            retries++;
+            std::string extra = "";
+            for (const auto& w : realWords) {
+                if (!used.count(w)) {
+                    extra = w;
+                    used.insert(w);
+                    break;
+                }
+            }
+            if (extra.empty()) {
+                extra = generatePseudoWord(allowedVec, key, 3, 6, true, rng);
+                if (keyIdx > 1 && used.count(extra)) continue;
+                used.insert(extra);
+            }
+            phaseB.push_back(extra);
+            for (char c : extra) if (c == key) totalTargetChars++;
+        }
+
+        out.clear();
+        out.insert(out.end(), phaseA.begin(), phaseA.end());
+        out.insert(out.end(), phaseB.begin(), phaseB.end());
+        out.insert(out.end(), phaseC.begin(), phaseC.end());
+    }
+
+    void synthesizeTrackLesson(
         std::vector<std::string>& out,
         size_t count,
         const std::string& track,
@@ -932,85 +1263,41 @@ private:
         for (const auto& k : unlockedKeys) {
             if (!k.empty()) unlockedSet.insert(k[0]);
         }
-        if (!target.empty()) {
-            unlockedSet.insert(target[0]);
+        for (char c : target) {
+            unlockedSet.insert(c);
         }
 
-        static thread_local std::mt19937 gen(1337);
+        static thread_local std::mt19937 gen(std::random_device{}());
 
-        // Find words matching criteria
-        std::vector<std::string> warmupCandidates;
-        std::vector<std::string> targetCandidates;
-        std::vector<std::string> cadenceCandidates;
-
+        std::vector<std::string> matching;
         for (const auto& word : corpus) {
             if (word.size() < 2 || word.size() > 8) continue;
-
-            bool allUnlocked = true;
+            bool ok = true;
             for (char ch : word) {
-                if (!unlockedSet.count(ch)) {
-                    allUnlocked = false;
-                    break;
+                if (!unlockedSet.count(ch)) { ok = false; break; }
+            }
+            if (!ok) continue;
+
+            if (word.find(target) != std::string::npos) {
+                matching.push_back(word);
+            }
+        }
+
+        if (matching.empty()) {
+            for (const auto& word : corpus) {
+                if (word.find(target) != std::string::npos) {
+                    matching.push_back(word);
                 }
             }
-
-            bool containsTarget = false;
-            if (track == "sfb_destroyer" || track == "trigram_chunks") {
-                containsTarget = (word.find(target) != std::string::npos);
-            } else if (!target.empty()) {
-                containsTarget = (word.find(target[0]) != std::string::npos);
-            }
-
-            // High alternation check
-            int alternations = 0;
-            for (size_t i = 1; i < word.size(); ++i) {
-                if (bioMap_.classifyTransition(word[i - 1], word[i]) == TransitionType::ALTERNATION) {
-                    alternations++;
-                }
-            }
-            bool isHighAlternation = (word.size() > 2 && alternations >= static_cast<int>(word.size() / 2));
-
-            if (allUnlocked && !containsTarget) {
-                warmupCandidates.push_back(word);
-            }
-            if (containsTarget) {
-                targetCandidates.push_back(word);
-            }
-            if (containsTarget && isHighAlternation) {
-                cadenceCandidates.push_back(word);
-            }
         }
 
-        // Fallbacks if corpus constraints are too strict
-        if (warmupCandidates.empty()) warmupCandidates = {"the", "line", "time", "test", "net", "tree"};
-        if (targetCandidates.empty()) {
-            if (!target.empty()) {
-                targetCandidates = {target + "et", "re" + target, target + "in", "te" + target + "t"};
-            } else {
-                targetCandidates = {"sister", "listen", "start", "sound", "still"};
-            }
-        }
-        if (cadenceCandidates.empty()) cadenceCandidates = targetCandidates;
-
-        std::shuffle(warmupCandidates.begin(), warmupCandidates.end(), gen);
-        std::shuffle(targetCandidates.begin(), targetCandidates.end(), gen);
-        std::shuffle(cadenceCandidates.begin(), cadenceCandidates.end(), gen);
-
-        // Phase A: 5 Warmup words
-        size_t pACount = std::min<size_t>(5, count / 5);
-        for (size_t i = 0; i < pACount && i < warmupCandidates.size(); ++i) {
-            out.push_back(warmupCandidates[i]);
+        if (matching.empty()) {
+            matching = {target + "ing", target + "er", target + "ed", "un" + target};
         }
 
-        // Phase B: Target drill words (words 6–20 = 15 words)
-        size_t pBCount = std::min<size_t>(15, count > pACount ? count - pACount - 5 : 10);
-        for (size_t i = 0; i < pBCount; ++i) {
-            out.push_back(targetCandidates[i % targetCandidates.size()]);
-        }
-
-        // Phase C: Cadence lock words (remaining up to count)
-        while (out.size() < count) {
-            out.push_back(cadenceCandidates[out.size() % cadenceCandidates.size()]);
+        std::shuffle(matching.begin(), matching.end(), gen);
+        for (size_t i = 0; i < count; ++i) {
+            out.push_back(matching[i % matching.size()]);
         }
     }
 
@@ -1038,7 +1325,6 @@ private:
             "count += 1;"
         };
 
-        // If target symbol specified, prioritize snippets with that symbol
         std::vector<std::string> matching;
         for (const auto& item : pool) {
             if (item.find(target) != std::string::npos) {
@@ -1048,11 +1334,7 @@ private:
         if (matching.empty()) matching = pool;
 
         for (size_t i = 0; i < count; ++i) {
-            if (i >= 5 && i < 20 && !matching.empty()) {
-                out.push_back(matching[i % matching.size()]);
-            } else {
-                out.push_back(pool[i % pool.size()]);
-            }
+            out.push_back(matching[i % matching.size()]);
         }
     }
 };
