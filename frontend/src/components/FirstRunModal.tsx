@@ -5,17 +5,26 @@ import { motion } from "framer-motion";
 import { User, Sparkles, LogOut, ArrowRight } from "lucide-react";
 import { useProfile } from "@/context/ProfileContext";
 
-export const FirstRunModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
+export interface FirstRunModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  isAddMode?: boolean;
+}
+
+export const FirstRunModal: React.FC<FirstRunModalProps> = ({
   isOpen,
   onClose,
+  isAddMode = false,
 }) => {
-  const { createProfile, setGuestMode } = useProfile();
+  const { profiles, createProfile, setGuestMode } = useProfile();
   const [name, setName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#F59E0B");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  const isActuallyAddMode = isAddMode || profiles.length > 0;
 
   const COLORS = [
     { hex: "#F59E0B", label: "Amber Gold" },
@@ -44,6 +53,7 @@ export const FirstRunModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
     setIsSubmitting(false);
 
     if (prof) {
+      setName("");
       onClose();
     } else {
       setError("Could not create profile. A profile with this name may already exist.");
@@ -63,6 +73,16 @@ export const FirstRunModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         className="w-full max-w-md rounded-2xl bg-[var(--surface-color,rgba(18,18,22,0.98))] border border-white/[0.12] p-8 shadow-2xl text-[var(--typed-color)] relative"
       >
+        {isActuallyAddMode && (
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 text-[var(--inactive-color)] hover:text-white transition-colors p-1 rounded-lg hover:bg-white/5 cursor-pointer text-sm"
+            title="Close"
+          >
+            ✕
+          </button>
+        )}
+
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
             <User className="w-6 h-6" />
@@ -71,7 +91,9 @@ export const FirstRunModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
             <div className="text-[10px] uppercase tracking-widest text-[var(--inactive-color)] font-semibold">
               TypeX Local System
             </div>
-            <h2 className="text-xl font-bold tracking-tight">Create Your Typist Profile</h2>
+            <h2 className="text-xl font-bold tracking-tight">
+              {isActuallyAddMode ? "Add New Typist Profile" : "Create Your Typist Profile"}
+            </h2>
           </div>
         </div>
 
@@ -130,19 +152,29 @@ export const FirstRunModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
               className="w-full py-3.5 px-6 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-sm flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-lg disabled:opacity-50"
               id="create-profile-submit-btn"
             >
-              <span>{isSubmitting ? "Creating..." : "Start Typing as " + (name.trim() || "Typist")}</span>
+              <span>{isSubmitting ? "Creating..." : isActuallyAddMode ? "Create Profile" : "Start Typing as " + (name.trim() || "Typist")}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            <button
-              type="button"
-              onClick={handleGuest}
-              className="w-full py-2.5 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] text-[var(--inactive-color)] hover:text-[var(--typed-color)] text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer border border-white/[0.05]"
-              id="continue-as-guest-btn"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Continue as Guest (No history saved)</span>
-            </button>
+            {isActuallyAddMode ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] text-[var(--inactive-color)] hover:text-[var(--typed-color)] text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer border border-white/[0.05]"
+              >
+                <span>Cancel</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGuest}
+                className="w-full py-2.5 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] text-[var(--inactive-color)] hover:text-[var(--typed-color)] text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer border border-white/[0.05]"
+                id="continue-as-guest-btn"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Continue as Guest (No history saved)</span>
+              </button>
+            )}
           </div>
         </form>
       </motion.div>

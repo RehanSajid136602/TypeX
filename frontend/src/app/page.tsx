@@ -188,6 +188,7 @@ export default function Home() {
 
   const { activeProfile, isGuest, firstRunNeeded, createProfile, setGuestMode } = useProfile();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false);
 
   const handleTestFinish = useCallback(async (results: TelemetryResult, errors: number[]) => {
     setTestResults(results);
@@ -286,6 +287,7 @@ export default function Home() {
         isFocusMode={showFocusFade}
         soundEnabled={soundEnabled}
         onSoundToggle={toggleSound}
+        onOpenCreateProfile={() => setIsCreateProfileOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -407,10 +409,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* First Run Modal */}
+      {/* First Run / Add Profile Modal */}
       <FirstRunModal
-        isOpen={firstRunNeeded}
-        onClose={() => {}}
+        isOpen={firstRunNeeded || isCreateProfileOpen}
+        onClose={() => setIsCreateProfileOpen(false)}
+        isAddMode={isCreateProfileOpen}
       />
     </main>
   );
