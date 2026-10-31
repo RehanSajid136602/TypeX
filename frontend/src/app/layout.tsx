@@ -15,6 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: "TypeX — Minimalist High-Performance Typing Engine",
   description: "An ultra-minimalist, 120fps fluid typing benchmark powered by a native C++17 telemetry engine.",
   keywords: ["typing test", "wpm test", "monkeytype", "minimalist typing", "TypeX"],
@@ -46,7 +47,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${jetbrainsMono.variable} ${inter.variable}`}>
       <body className="theme-obsidian min-h-screen flex flex-col justify-between selection:bg-amber-500/20 selection:text-amber-200">
         <ProfileProvider>
           {children}

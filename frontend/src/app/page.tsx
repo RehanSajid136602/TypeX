@@ -71,6 +71,42 @@ const persistTier = (next: DictionaryTier) => {
   tierListeners.forEach((listener) => listener());
 };
 
+const LINE_COUNT_STORAGE_KEY = "typex_line_count";
+
+const lineCountListeners = new Set<() => void>();
+
+const subscribeLineCount = (onChange: () => void) => {
+  lineCountListeners.add(onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    lineCountListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+};
+
+const getLineCountSnapshot = (): LineCountOption => {
+  try {
+    const saved = localStorage.getItem(LINE_COUNT_STORAGE_KEY);
+    if (saved === "2" || saved === "3" || saved === "4") {
+      return parseInt(saved, 10) as LineCountOption;
+    }
+  } catch {
+    // localStorage can be unavailable
+  }
+  return 3;
+};
+
+const getServerLineCountSnapshot = (): LineCountOption => 3;
+
+const persistLineCount = (next: LineCountOption) => {
+  try {
+    localStorage.setItem(LINE_COUNT_STORAGE_KEY, next.toString());
+  } catch {
+    // non-fatal
+  }
+  lineCountListeners.forEach((listener) => listener());
+};
+
 // Mastery profile loader, shared by the mount effect and the manual refreshes.
 // Kept outside the component so callers do not need it in their dependency lists.
 async function requestMasteryStatus(signal?: AbortSignal): Promise<MasteryStatus | null> {
@@ -91,14 +127,7 @@ export default function Home() {
   const [mode, setMode] = useState<TestMode>("time");
   const [timeOption, setTimeOption] = useState<TimeOption>(30);
   const [wordsOption, setWordsOption] = useState<WordsOption>(50);
-  const [lineCount, setLineCount] = useState<LineCountOption>(() => {
-    if (typeof window === "undefined") return 3;
-    const saved = localStorage.getItem("typex_line_count");
-    if (saved === "2" || saved === "3" || saved === "4") {
-      return parseInt(saved, 10) as LineCountOption;
-    }
-    return 3;
-  });
+  const lineCount = useSyncExternalStore(subscribeLineCount, getLineCountSnapshot, getServerLineCountSnapshot);
   const tier = useSyncExternalStore(subscribeTier, getTierSnapshot, getServerTierSnapshot);
   const [errorBehavior, setErrorBehavior] = useState<ErrorBehavior>("free");
   const [sessionNonce, setSessionNonce] = useState<number>(0);
@@ -112,10 +141,7 @@ export default function Home() {
   }, []);
 
   const handleLineCountChange = useCallback((lines: LineCountOption) => {
-    setLineCount(lines);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("typex_line_count", lines.toString());
-    }
+    persistLineCount(lines);
   }, []);
 
   // Phase 1-4: Neuro-Motor Mastery Engine states
