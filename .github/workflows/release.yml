@@ -118,6 +118,7 @@ jobs:
             -D_WIN32_WINNT=0x0A00 \
             -static -static-libgcc -static-libstdc++ \
             -lws2_32 -liphlpapi -lshell32 \
+            -mwindows \
             -o backend/TypeX.exe
           x86_64-w64-mingw32-strip --strip-unneeded backend/TypeX.exe
 
@@ -142,8 +143,9 @@ jobs:
             cp -r frontend/out/* build/windows/dist_win/web/
           fi
           
-          # Copy tracked NSIS installer script
+          # Copy tracked NSIS installer script and license agreement
           cp packaging/windows/installer.nsi build/windows/installer.nsi
+          cp packaging/windows/LICENSE.txt build/windows/LICENSE.txt
           
           # Build NSIS installer executable
           cd build/windows

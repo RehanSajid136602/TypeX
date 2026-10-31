@@ -38,9 +38,20 @@ Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
+
+; License & Terms Agreement Page
+!define MUI_LICENSEPAGE_CHECKBOX
+!insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
+
+; Installation Directory Selection Page
 !insertmacro MUI_PAGE_DIRECTORY
+
+; Installation Progress Page
 !insertmacro MUI_PAGE_INSTFILES
+
+; Finish Page with option to run TypeX
 !define MUI_FINISHPAGE_RUN "$INSTDIR\TypeX.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch TypeX"
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstaller Pages

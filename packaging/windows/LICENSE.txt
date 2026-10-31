@@ -1,0 +1,20 @@
+TypeX End User License Agreement & Terms of Service
+
+Version 1.0 - October 2026
+
+Please read the following terms and conditions carefully before installing or using TypeX.
+
+1. Grant of License
+TypeX ("the Software") is provided to you as a high-performance minimalist typing benchmark, stage tournament platform, and motor-learning suite. You are granted a personal, non-exclusive, royalty-free license to install, execute, and use the Software on any compatible computer.
+
+2. Local Data Privacy & Ownership
+All typing statistics, keylogs, velocity records, error analyses, and personal profiles are stored strictly locally on your machine (in %LOCALAPPDATA%\TypeX on Windows and ~/.local/share/TypeX on Linux). No personal telemetry or keystroke data is ever uploaded to external cloud servers without your explicit action.
+
+3. Competition Mode & Stage Tournaments
+When using the stage competition engine, the software operates an embedded local web server over your local network to synchronize participant rankings and projector displays. You are responsible for ensuring that competition network usage complies with your local organization's network policies.
+
+4. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY.
+
+5. Termination
+You may terminate this agreement at any time by uninstalling the Software and removing all local data.
