@@ -76,6 +76,9 @@ async function requestWordBatch(params: {
   };
 }
 
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
 // Memoized individual word component for 0 layout shift and maximum typing performance
 interface WordElementProps {
   word: string;
@@ -89,45 +92,58 @@ interface WordElementProps {
 export const WordElement = React.memo<WordElementProps>(
   ({ word, wIdx, isCurrent, isPast, typedVal, targetKey }) => {
     const targetLower = targetKey ? targetKey.toLowerCase() : "";
+    const isPastMistyped = isPast && typedVal !== word;
 
     return (
       <div
         data-word-idx={wIdx}
-        className="relative flex items-center whitespace-nowrap"
+        className={`relative inline-flex items-baseline whitespace-nowrap border-b-2 ${
+          isPastMistyped ? "border-[var(--error-color)]/70 pb-[1px]" : "border-transparent pb-[1px]"
+        }`}
       >
         {/* Target word characters */}
         {word.split("").map((targetChar, cIdx) => {
           let charStyle: React.CSSProperties = {
             color: "var(--untyped-color)",
-            opacity: "var(--untyped-opacity, 0.65)" as unknown as number,
+            opacity: "var(--untyped-opacity)",
           };
-          let borderClass = "";
+          let borderClass = "border-transparent";
 
           const isTargetLetter = targetLower !== "" && targetChar.toLowerCase() === targetLower;
 
-          if (isCurrent && cIdx >= typedVal.length) {
-            charStyle = {
-              color: isTargetLetter
-                ? "var(--accent-color)"
-                : "var(--untyped-active, var(--untyped-color))",
-              opacity: isTargetLetter ? 1.0 : 0.90,
-            };
-            if (isTargetLetter) {
-              borderClass = "border-b-[2px] border-[var(--accent-color)] pb-[1px]";
+          if (isCurrent) {
+            if (cIdx >= typedVal.length) {
+              charStyle = {
+                color: isTargetLetter
+                  ? "var(--accent-color)"
+                  : "var(--untyped-active)",
+                opacity: isTargetLetter ? 1.0 : 0.78,
+              };
+              if (isTargetLetter) {
+                borderClass = "border-[var(--accent-color)]";
+              }
             }
-          } else if (isPast && cIdx >= typedVal.length) {
-            charStyle = {
-              color: "var(--untyped-color)",
-              opacity: 0.45,
-            };
-          } else if (!isPast && !isCurrent) {
+          } else if (isPast) {
+            if (cIdx >= typedVal.length) {
+              charStyle = {
+                color: "var(--error-color)",
+                opacity: 0.55,
+              };
+              borderClass = "border-[var(--error-color)]/50";
+            } else {
+              charStyle = {
+                color: "var(--untyped-color)",
+                opacity: "var(--untyped-opacity)",
+              };
+            }
+          } else {
             // Future upcoming words
             if (isTargetLetter) {
               charStyle = {
                 color: "var(--accent-color)",
-                opacity: 0.90,
+                opacity: 0.85,
               };
-              borderClass = "border-b-[2px] border-[var(--accent-color)] pb-[1px]";
+              borderClass = "border-[var(--accent-color)]";
             }
           }
 
@@ -138,13 +154,13 @@ export const WordElement = React.memo<WordElementProps>(
                 color: "var(--typed-color)",
                 opacity: 1.0,
               };
-              borderClass = "";
+              borderClass = "border-transparent";
             } else {
               charStyle = {
                 color: "var(--error-color)",
                 opacity: 1.0,
               };
-              borderClass = "border-b-[2px] border-[var(--error-color)] pb-[1px]";
+              borderClass = "border-[var(--error-color)]";
             }
           }
 
@@ -153,7 +169,7 @@ export const WordElement = React.memo<WordElementProps>(
               key={cIdx}
               data-char-idx={cIdx}
               style={charStyle}
-              className={`inline-block transition-colors duration-75 ${borderClass}`}
+              className={`inline-block border-b-2 ${borderClass}`}
             >
               {targetChar}
             </span>
@@ -169,8 +185,8 @@ export const WordElement = React.memo<WordElementProps>(
               <span
                 key={`extra-${eIdx}`}
                 data-char-idx={word.length + eIdx}
-                style={{ color: "var(--error-color)", opacity: 0.8 }}
-                className="inline-block border-b-[2px] border-[var(--error-color)] pb-[1px]"
+                style={{ color: "var(--error-color)", opacity: 1.0 }}
+                className="inline-block border-b-2 border-[var(--error-color)]"
               >
                 {extraChar}
               </span>
@@ -183,7 +199,8 @@ export const WordElement = React.memo<WordElementProps>(
       prev.word === next.word &&
       prev.isCurrent === next.isCurrent &&
       prev.isPast === next.isPast &&
-      prev.typedVal === next.typedVal
+      prev.typedVal === next.typedVal &&
+      prev.targetKey === next.targetKey
     );
   }
 );
@@ -270,11 +287,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const recentKeyTimestamps = useRef<number[]>([]);
   const [caretGlowIntensity, setCaretGlowIntensity] = useState<number>(0); // 0–1
 
-  // ── Phase 4: Rage-Quit Shake ───────────────────────────────────────────────
-  const [isRageShaking, setIsRageShaking] = useState<boolean>(false);
-  const recentErrorTimestamps = useRef<number[]>([]);
-  const rageShakeTimeout = useRef<NodeJS.Timeout | null>(null);
-
   // Flash state for "Stop on Error"
   const [stopErrorFlash, setStopErrorFlash] = useState<boolean>(false);
 
@@ -352,14 +364,21 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     const activeInput = currentInputRef.current;
 
     let missed = 0;
-    for (let i = activeWordIdx; i < currentWords.length; i++) {
-      const orig = currentWords[i] || "";
-      if (i === activeWordIdx) {
-        if (orig.length > activeInput.length) {
-          missed += orig.length - activeInput.length;
+    if (mode !== "time") {
+      for (let i = activeWordIdx; i < currentWords.length; i++) {
+        const orig = currentWords[i] || "";
+        if (i === activeWordIdx) {
+          if (orig.length > activeInput.length) {
+            missed += orig.length - activeInput.length;
+          }
+        } else {
+          missed += orig.length;
         }
-      } else {
-        missed += orig.length;
+      }
+    } else {
+      const orig = currentWords[activeWordIdx] || "";
+      if (orig.length > activeInput.length) {
+        missed += orig.length - activeInput.length;
       }
     }
 
@@ -484,7 +503,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     setStopErrorFlash(false);
     setLiveWpmWindow([]);
     setCaretGlowIntensity(0);
-    setIsRageShaking(false);
 
     // Reset drill and learn telemetry
     setInLockInDrill(false);
@@ -507,7 +525,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     extraKeystrokesCount.current = 0;
     completedWordResults.current = [];
     recentKeyTimestamps.current = [];
-    recentErrorTimestamps.current = [];
 
     const initialCount = mode === "learn" ? 25 : mode === "time" ? 100 : wordsOption;
     fetchWords(initialCount, false);
@@ -620,8 +637,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const updateCaretAndScroll = useCallback(() => {
     if (!wordsWrapperRef.current || words.length === 0) return;
 
+    const activeWordIdx = currentWordIdxRef.current;
     const currentWordEl = wordsWrapperRef.current.querySelector(
-      `[data-word-idx="${currentWordIdx}"]`
+      `[data-word-idx="${activeWordIdx}"]`
     ) as HTMLElement | null;
 
     if (!currentWordEl) return;
@@ -640,8 +658,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
     // Caret coordinates
     const charElements = currentWordEl.querySelectorAll<HTMLElement>("[data-char-idx]");
-    if (currentInput.length < charElements.length) {
-      const activeCharEl = charElements[currentInput.length];
+    const inputLen = currentInputRef.current.length;
+    if (inputLen < charElements.length) {
+      const activeCharEl = charElements[inputLen];
       if (activeCharEl) {
         setCaretPos({
           x: currentWordEl.offsetLeft + activeCharEl.offsetLeft,
@@ -670,11 +689,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         visible: true,
       });
     }
-  }, [currentWordIdx, currentInput, words]);
+  }, [words]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     updateCaretAndScroll();
-  }, [updateCaretAndScroll]);
+  }, [updateCaretAndScroll, currentWordIdx, currentInput]);
 
   // Recompute line breaks and caret positioning after fonts are ready and on window resize
   useEffect(() => {
@@ -738,25 +757,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     setCaretGlowIntensity(velocity);
   }, []);
 
-  // ── Phase 4: Rage-Quit Shake ───────────────────────────────────────────────
-  const triggerRageShakeIfNeeded = useCallback(() => {
-    const now = performance.now();
-    // Keep only errors in last 2 seconds
-    recentErrorTimestamps.current = recentErrorTimestamps.current.filter(
-      (t) => now - t < 2000
-    );
-    recentErrorTimestamps.current.push(now);
-
-    if (recentErrorTimestamps.current.length >= 3) {
-      recentErrorTimestamps.current = [];
-      setIsRageShaking(true);
-      if (rageShakeTimeout.current) clearTimeout(rageShakeTimeout.current);
-      rageShakeTimeout.current = setTimeout(() => {
-        setIsRageShaking(false);
-      }, 500);
-    }
-  }, []);
-
   // Handle typing input
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const now = performance.now();
@@ -771,15 +771,18 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       }
       if (e.key === "Backspace") {
         e.preventDefault();
-        if (currentInput.length > 0) {
-          setCurrentInput((prev) => prev.slice(0, -1));
+        if (currentInputRef.current.length > 0) {
+          const nextInput = currentInputRef.current.slice(0, -1);
+          currentInputRef.current = nextInput;
+          setCurrentInput(nextInput);
         }
         return;
       }
       if (e.key === " " || e.key === "Space" || e.key === "Enter") {
         e.preventDefault();
         const target = drillWords[drillWordIndex] || "";
-        if (currentInput === target) {
+        const activeInput = currentInputRef.current;
+        if (activeInput === target) {
           onWordComplete();
           const nextClean = drillCleanCount + 1;
           if (nextClean >= 3) {
@@ -787,20 +790,22 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             if (drillWordIndex + 1 < drillWords.length) {
               setDrillWordIndex((prev) => prev + 1);
               setDrillCleanCount(0);
+              currentInputRef.current = "";
               setCurrentInput("");
             } else {
               finalizeLearnTest();
             }
           } else {
             setDrillCleanCount(nextClean);
+            currentInputRef.current = "";
             setCurrentInput("");
           }
         } else {
-          triggerRageShakeIfNeeded();
           setStopErrorFlash(true);
           setTimeout(() => setStopErrorFlash(false), 200);
           onKeyError();
           setDrillCleanCount(0);
+          currentInputRef.current = "";
           setCurrentInput("");
         }
         return;
@@ -809,7 +814,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         e.preventDefault();
         const char = e.key;
         const target = drillWords[drillWordIndex] || "";
-        const expectedChar = target[currentInput.length];
+        const activeInput = currentInputRef.current;
+        const expectedChar = target[activeInput.length];
         lastTypedCharRef.current = char;
 
         if (mode === "learn") {
@@ -825,7 +831,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
         if (char === expectedChar) {
           onKeyClick();
-          const nextInput = currentInput + char;
+          const nextInput = activeInput + char;
+          currentInputRef.current = nextInput;
           setCurrentInput(nextInput);
           if (nextInput === target) {
             onWordComplete();
@@ -833,29 +840,25 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             if (nextClean >= 3) {
               repairedWordsSet.current.add(target);
               if (drillWordIndex + 1 < drillWords.length) {
-                setTimeout(() => {
-                  setDrillWordIndex((prev) => prev + 1);
-                  setDrillCleanCount(0);
-                  setCurrentInput("");
-                }, 100);
+                setDrillWordIndex((prev) => prev + 1);
+                setDrillCleanCount(0);
+                currentInputRef.current = "";
+                setCurrentInput("");
               } else {
-                setTimeout(() => {
-                  finalizeLearnTest();
-                }, 120);
+                finalizeLearnTest();
               }
             } else {
-              setTimeout(() => {
-                setDrillCleanCount(nextClean);
-                setCurrentInput("");
-              }, 100);
+              setDrillCleanCount(nextClean);
+              currentInputRef.current = "";
+              setCurrentInput("");
             }
           }
         } else {
-          triggerRageShakeIfNeeded();
           setStopErrorFlash(true);
           setTimeout(() => setStopErrorFlash(false), 200);
           onKeyError();
           setDrillCleanCount(0);
+          currentInputRef.current = "";
           setCurrentInput("");
         }
         return;
@@ -874,6 +877,19 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     if (e.key === "Tab") {
       e.preventDefault();
       resetTest();
+      return;
+    }
+
+    // Handle Ctrl/Cmd combinations (e.g. Ctrl+Backspace to delete whole word)
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        if (errorBehavior === "strict") return;
+        currentInputRef.current = "";
+        setCurrentInput("");
+        return;
+      }
+      // Let browser shortcuts (Ctrl+R, etc.) work without interference
       return;
     }
 
@@ -917,7 +933,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       setCaretGlowIntensity(0);
     }, 600);
 
-    const targetWord = words[currentWordIdx] || "";
+    const activeWordIdx = currentWordIdxRef.current;
+    const activeWords = wordsRef.current.length > 0 ? wordsRef.current : words;
+    const targetWord = activeWords[activeWordIdx] || "";
+    const activeInput = currentInputRef.current;
 
     // 1. BACKSPACE HANDLER
     if (e.key === "Backspace") {
@@ -926,19 +945,24 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         return;
       }
 
-      if (currentInput.length > 0) {
-        const charIdx = currentInput.length - 1;
-        if (charIdx < targetWord.length && currentInput[charIdx] !== targetWord[charIdx]) {
+      if (activeInput.length > 0) {
+        const charIdx = activeInput.length - 1;
+        if (charIdx < targetWord.length && activeInput[charIdx] !== targetWord[charIdx]) {
           correctedErrorsCount.current++;
         }
-        setCurrentInput((prev) => prev.slice(0, -1));
-      } else if (currentWordIdx > 0 && errorBehavior === "free" && mode !== "learn") {
-        const prevIdx = currentWordIdx - 1;
-        const prevTyped = typedWords[prevIdx] || "";
+        const nextInput = activeInput.slice(0, -1);
+        currentInputRef.current = nextInput;
+        setCurrentInput(nextInput);
+      } else if (activeWordIdx > 0 && errorBehavior === "free" && mode !== "learn") {
+        const prevIdx = activeWordIdx - 1;
+        const prevTyped = typedWordsRef.current[prevIdx] || "";
+        currentWordIdxRef.current = prevIdx;
+        currentInputRef.current = prevTyped;
         setCurrentWordIdx(prevIdx);
         setCurrentInput(prevTyped);
-        setTypedWords((prev) => prev.slice(0, prevIdx + 1));
-        // Also remove the last completed word result
+        const nextTypedWords = typedWordsRef.current.slice(0, prevIdx);
+        typedWordsRef.current = nextTypedWords;
+        setTypedWords(nextTypedWords);
         completedWordResults.current = completedWordResults.current.slice(0, prevIdx);
       }
       return;
@@ -947,11 +971,19 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     // 2. SPACE / WORD ADVANCE HANDLER
     if (e.key === " " || e.key === "Space") {
       e.preventDefault();
-      if (currentInput.length === 0) return;
+      if (activeInput.length === 0) return;
+
+      // In stop mode, do not allow skipping unfinished or error words
+      if (errorBehavior === "stop" && activeInput !== targetWord) {
+        setStopErrorFlash(true);
+        setTimeout(() => setStopErrorFlash(false), 200);
+        incorrectKeystrokesCount.current += 1;
+        onKeyError();
+        return;
+      }
 
       keystrokesInCurrentSecond.current += 1;
-
-      const isCorrect = currentInput === targetWord;
+      const isCorrect = activeInput === targetWord;
 
       if (mode === "learn") {
         learnKeystrokesRef.current.push({
@@ -964,16 +996,15 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         });
         if (!isCorrect) {
           missedWordsSet.current.add(targetWord);
-        }
-        if (!isCorrect && repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
-          repairQueueRef.current.push(targetWord);
+          if (repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
+            repairQueueRef.current.push(targetWord);
+          }
         }
       }
 
-      // Record word result for heatmap
       completedWordResults.current.push({
         original: targetWord,
-        typed: currentInput,
+        typed: activeInput,
       });
 
       if (!isCorrect) {
@@ -982,30 +1013,33 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           ? Math.floor((performance.now() - startTimeRef.current) / 1000)
           : 0;
         errorSeconds.current.add(currentElapsed + 1);
-        triggerRageShakeIfNeeded();
         onKeyError();
       } else {
         correctKeystrokesCount.current += 1;
         onWordComplete();
       }
 
-      setTypedWords((prev) => {
-        const next = [...prev];
-        next[currentWordIdx] = currentInput;
-        return next;
-      });
+      const nextTypedWords = [...typedWordsRef.current];
+      nextTypedWords[activeWordIdx] = activeInput;
+      typedWordsRef.current = nextTypedWords;
+      setTypedWords(nextTypedWords);
 
-      if (mode === "words" && currentWordIdx + 1 >= wordsOption) {
+      const nextWordIdx = activeWordIdx + 1;
+
+      if (mode === "words" && nextWordIdx >= wordsOption) {
+        currentInputRef.current = "";
+        setCurrentInput("");
         finalizeTest();
         return;
       }
 
-      if (mode === "learn" && currentWordIdx + 1 >= words.length) {
+      if (mode === "learn" && nextWordIdx >= activeWords.length) {
         if (repairQueueRef.current.length > 0) {
           setInLockInDrill(true);
           setDrillWords([...repairQueueRef.current]);
           setDrillWordIndex(0);
           setDrillCleanCount(0);
+          currentInputRef.current = "";
           setCurrentInput("");
           return;
         } else {
@@ -1014,8 +1048,13 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         }
       }
 
-      setCurrentWordIdx((prev) => prev + 1);
+      currentWordIdxRef.current = nextWordIdx;
+      currentInputRef.current = "";
+      setCurrentWordIdx(nextWordIdx);
       setCurrentInput("");
+
+      const nextTarget = activeWords[nextWordIdx] || "";
+      onNextCharChange?.(nextTarget[0] || " ", " ");
       return;
     }
 
@@ -1023,14 +1062,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     if (e.key.length === 1) {
       e.preventDefault();
       const char = e.key;
-      const expectedChar = targetWord[currentInput.length];
+      const expectedChar = targetWord[activeInput.length];
       lastTypedCharRef.current = char;
 
       keystrokesInCurrentSecond.current += 1;
       const isCharCorrect = char === expectedChar;
 
       if (mode === "learn") {
-        const charKey = `${currentWordIdx}:${currentInput.length}`;
+        const charKey = `${activeWordIdx}:${activeInput.length}`;
         const isFirstAttempt = !firstAttemptKeyIndices.current.has(charKey);
         firstAttemptKeyIndices.current.add(charKey);
 
@@ -1043,7 +1082,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           isDrill: false,
         });
 
-        // Check hesitation on active target key (>450ms) or typo
         const targetLetter = lessonActiveTargetRef.current.toLowerCase();
         const isTargetChar = Boolean(expectedChar && expectedChar.toLowerCase() === targetLetter);
         if (!isCharCorrect) {
@@ -1058,7 +1096,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       // Handle "Stop on Error" mode
       if (errorBehavior === "stop") {
-        if (char !== expectedChar) {
+        if (!isCharCorrect) {
           setStopErrorFlash(true);
           setTimeout(() => setStopErrorFlash(false), 200);
           incorrectKeystrokesCount.current += 1;
@@ -1066,18 +1104,21 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             ? Math.floor((performance.now() - startTimeRef.current) / 1000)
             : 0;
           errorSeconds.current.add(currentElapsed + 1);
-          triggerRageShakeIfNeeded();
           onKeyError();
           return;
         } else {
           correctKeystrokesCount.current += 1;
           onKeyClick();
-          const nextInput = currentInput + char;
+          const nextInput = activeInput + char;
+          currentInputRef.current = nextInput;
           setCurrentInput(nextInput);
+
+          const nextExpected = targetWord[nextInput.length] || " ";
+          onNextCharChange?.(nextExpected, char);
 
           if (
             mode === "words" &&
-            currentWordIdx === wordsOption - 1 &&
+            activeWordIdx === wordsOption - 1 &&
             nextInput === targetWord
           ) {
             finalizeTest();
@@ -1086,7 +1127,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
           if (
             mode === "learn" &&
-            currentWordIdx === words.length - 1 &&
+            activeWordIdx === activeWords.length - 1 &&
             nextInput === targetWord
           ) {
             if (repairQueueRef.current.length > 0) {
@@ -1094,6 +1135,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               setDrillWords([...repairQueueRef.current]);
               setDrillWordIndex(0);
               setDrillCleanCount(0);
+              currentInputRef.current = "";
               setCurrentInput("");
             } else {
               finalizeLearnTest();
@@ -1105,7 +1147,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       }
 
       // Free Flow & Strict mode
-      if (char === expectedChar) {
+      if (isCharCorrect) {
         correctKeystrokesCount.current += 1;
         onKeyClick();
       } else {
@@ -1114,21 +1156,24 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           ? Math.floor((performance.now() - startTimeRef.current) / 1000)
           : 0;
         errorSeconds.current.add(currentElapsed + 1);
-        if (currentInput.length >= targetWord.length) {
+        if (activeInput.length >= targetWord.length) {
           extraKeystrokesCount.current += 1;
         }
-        triggerRageShakeIfNeeded();
         onKeyError();
       }
 
-      const nextInput = currentInput + char;
+      const nextInput = activeInput + char;
       if (nextInput.length <= targetWord.length + 10) {
+        currentInputRef.current = nextInput;
         setCurrentInput(nextInput);
       }
 
+      const nextExpected = targetWord[nextInput.length] || " ";
+      onNextCharChange?.(nextExpected, char);
+
       if (
         mode === "words" &&
-        currentWordIdx === wordsOption - 1 &&
+        activeWordIdx === wordsOption - 1 &&
         nextInput === targetWord
       ) {
         finalizeTest();
@@ -1137,7 +1182,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       if (
         mode === "learn" &&
-        currentWordIdx === words.length - 1 &&
+        activeWordIdx === activeWords.length - 1 &&
         nextInput === targetWord
       ) {
         if (repairQueueRef.current.length > 0) {
@@ -1145,6 +1190,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           setDrillWords([...repairQueueRef.current]);
           setDrillWordIndex(0);
           setDrillCleanCount(0);
+          currentInputRef.current = "";
           setCurrentInput("");
         } else {
           finalizeLearnTest();
@@ -1292,32 +1338,33 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       {/* 3-Line Viewport Container or Neural Lock-In Drill View */}
       {inLockInDrill ? (
-        <div className={`w-full h-[168px] flex flex-col items-center justify-center text-center arena-mask py-1 select-none ${isRageShaking ? "arena-shake" : ""}`}>
+        <div className="w-full h-[168px] flex flex-col items-center justify-center text-center arena-mask py-1 select-none">
           <div className="text-4xl sm:text-5xl font-mono-custom tracking-wider flex items-center justify-center gap-1 mb-3">
             {(drillWords[drillWordIndex] || "").split("").map((targetChar, cIdx) => {
               let charColor = "var(--untyped-color)";
-              let charOpacity = 0.65;
-              let borderClass = "";
+              let charOpacity: number | string = "var(--untyped-opacity)";
+              let borderClass = "border-transparent";
               if (cIdx < currentInput.length) {
                 const typedChar = currentInput[cIdx];
                 if (typedChar === targetChar) {
                   charColor = "var(--typed-color)";
                   charOpacity = 1.0;
+                  borderClass = "border-transparent";
                 } else {
                   charColor = "var(--error-color)";
                   charOpacity = 1.0;
-                  borderClass = "border-b-[3px] border-[var(--error-color)] pb-[2px]";
+                  borderClass = "border-[var(--error-color)]";
                 }
               } else if (cIdx === currentInput.length) {
-                charColor = "var(--untyped-active, var(--untyped-color))";
-                charOpacity = 0.95;
-                borderClass = "border-b-[2px] border-[var(--accent-color)] pb-[1px]";
+                charColor = "var(--untyped-active)";
+                charOpacity = 0.85;
+                borderClass = "border-[var(--accent-color)]";
               }
               return (
                 <span
                   key={cIdx}
                   style={{ color: charColor, opacity: charOpacity }}
-                  className={`inline-block transition-colors duration-75 ${borderClass}`}
+                  className={`inline-block border-b-2 ${borderClass}`}
                 >
                   {targetChar}
                 </span>
@@ -1360,12 +1407,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             }}
             className={`w-full flex flex-wrap gap-x-4 gap-y-1 text-[clamp(1.5rem,2.2vw,2.1rem)] leading-[1.75] tracking-tight font-mono-custom relative ${
               !isFocused ? "opacity-30" : "opacity-100"
-            } transition-opacity duration-300 ${
-              // ── Feature 4: Rage-Quit Shake ──
-              isRageShaking ? "arena-shake" : ""
-            }`}
+            } transition-opacity duration-300`}
           >
-            {/* ── Feature 3: Velocity-Reactive Caret Glow ── */}
+            {/* ── Caret ── */}
             {caretPos.visible && (
               <motion.div
                 animate={{
@@ -1374,10 +1418,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                   height: caretPos.height - 8,
                 }}
                 transition={{
-                  type: "spring",
-                  stiffness: 500,
-                  damping: 35,
-                  mass: 0.15,
+                  left: { type: "spring", stiffness: 600, damping: 38, mass: 0.1 },
+                  top: { duration: 0.12, ease: "easeOut" },
+                  height: { duration: 0.05 },
                 }}
                 style={
                   stopErrorFlash
