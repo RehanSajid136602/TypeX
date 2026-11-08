@@ -726,12 +726,12 @@ public:
 
         saveProfile();
 
-        double newConfidence = trackTargetConfidence(track, newActiveTarget);
+        double activeTargetConfidence = passedGate ? 100.0 : trackTargetConfidence(track, activeTarget);
 
         json deltaReport = {
             {"previousConfidence", std::round(prevConfidence * 10.0) / 10.0},
-            {"newConfidence", std::round(newConfidence * 10.0) / 10.0},
-            {"confidenceDelta", std::round((newConfidence - prevConfidence) * 10.0) / 10.0},
+            {"newConfidence", passedGate ? 100.0 : std::round(activeTargetConfidence * 10.0) / 10.0},
+            {"confidenceDelta", std::round((activeTargetConfidence - prevConfidence) * 10.0) / 10.0},
             {"unlockedNewTarget", unlockedNewTarget},
             {"newActiveTarget", newActiveTarget},
             {"passedGate", passedGate},
@@ -739,6 +739,15 @@ public:
             {"targetAccuracy", std::round(targetAccuracy * 10.0) / 10.0},
             {"targetSpeedWpm", std::round(targetSpeedWpm_ * 10.0) / 10.0},
             {"missedWords", missedWords},
+            {"gateSnapshot", payload.contains("gateSnapshot") && payload["gateSnapshot"].is_object() ? payload["gateSnapshot"] : json{
+                {"target", activeTarget},
+                {"percentage", passedGate ? 100.0 : std::min(100.0, std::max(0.0, std::round(activeTargetConfidence * 10.0) / 10.0))},
+                {"achieved", passedGate},
+                {"keystrokesDone", targetAttempts},
+                {"keystrokesRequired", 20},
+                {"accuracy", std::round(targetAccuracy * 10.0) / 10.0},
+                {"advancingToToken", newActiveTarget}
+            }},
             {"weakestFinger", getWeakestFingerJson()},
             {"topConfusions", getTopConfusionsJson(3)},
             {"sfbBottlenecks", getSfbBottlenecksJson(3)},
@@ -1238,16 +1247,28 @@ private:
         }
     }
 
+public:
     std::pair<bool, std::string> advanceTrack(const std::string& track, const std::string& currentTarget) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (track == "phonetic_unlock") {
             char curr = currentTarget.empty() ? 'e' : currentTarget[0];
             auto it = std::find(CURRICULUM_KEY_SEQUENCE.begin(), CURRICULUM_KEY_SEQUENCE.end(), curr);
             if (it != CURRICULUM_KEY_SEQUENCE.end() && it + 1 != CURRICULUM_KEY_SEQUENCE.end()) {
                 char nextC = *(it + 1);
+                std::string currStr(1, curr);
+                keyStats_[currStr].status = "mastered";
+                // Mark all prior keys as mastered if not already
+                for (auto pit = CURRICULUM_KEY_SEQUENCE.begin(); pit <= it; ++pit) {
+                    std::string pStr(1, *pit);
+                    if (keyStats_[pStr].status != "mastered") {
+                        keyStats_[pStr].status = "mastered";
+                    }
+                }
                 std::string nextStr(1, nextC);
                 keyStats_[nextStr].status = "active";
                 recomputeConfidences(keyStats_[nextStr]);
                 trackActiveTarget_["phonetic_unlock"] = nextStr;
+                saveProfile();
                 return {true, nextStr};
             }
         } else if (track == "trigram_chunks") {
@@ -1584,26 +1605,64 @@ private:
             if (ok) eligibleRepairs.push_back(w);
         }
 
-        // Phase A: Warm-Up (unlocked letters, prioritize non-focus)
+        // Phase A: Warm-Up (at least 80% target density; filler placed strictly in interior, never index 0)
+        std::shuffle(realWords.begin(), realWords.end(), rng);
         std::shuffle(warmupReals.begin(), warmupReals.end(), rng);
-        for (const auto& w : warmupReals) {
-            if (phaseA.size() >= targetWarmupCount) break;
-            if (!used.count(w)) {
-                phaseA.push_back(w);
-                used.insert(w);
-            }
-        }
 
         std::unordered_set<char> nonTargetAllowed = allowedSet;
         if (nonTargetAllowed.size() > 1) nonTargetAllowed.erase(key);
 
-        int retries = 0;
-        while (phaseA.size() < targetWarmupCount && retries < 150) {
-            retries++;
-            std::string pw = generateQuadWord(nonTargetAllowed, '\0', 3, 5, rng);
-            if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
-                phaseA.push_back(pw);
-                used.insert(pw);
+        size_t maxWarmupFillers = (targetWarmupCount <= 3) ? 0 : 1;
+        std::string warmupFiller = "";
+        for (const auto& w : warmupReals) {
+            if (!used.count(w)) {
+                warmupFiller = w;
+                used.insert(w);
+                break;
+            }
+        }
+        if (warmupFiller.empty() && nonTargetAllowed.size() > 0 && maxWarmupFillers > 0) {
+            int retries = 0;
+            while (retries < 150) {
+                retries++;
+                std::string pw = generateQuadWord(nonTargetAllowed, '\0', 3, 5, rng);
+                if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
+                    warmupFiller = pw;
+                    used.insert(pw);
+                    break;
+                }
+            }
+        }
+
+        // Fill Phase A with target words, placing the single filler at index 2 (interior)
+        size_t fillerSlot = (targetWarmupCount >= 4) ? 2 : 999;
+        for (size_t i = 0; i < targetWarmupCount; ++i) {
+            if (i == fillerSlot && !warmupFiller.empty()) {
+                phaseA.push_back(warmupFiller);
+                continue;
+            }
+            std::string tw = "";
+            for (const auto& w : realWords) {
+                if (!used.count(w)) {
+                    tw = w;
+                    used.insert(w);
+                    break;
+                }
+            }
+            if (tw.empty()) {
+                int retries = 0;
+                while (retries < 150) {
+                    retries++;
+                    std::string pw = generateQuadWord(allowedSet, key, 3, 6, rng);
+                    if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
+                        tw = pw;
+                        used.insert(pw);
+                        break;
+                    }
+                }
+            }
+            if (!tw.empty()) {
+                phaseA.push_back(tw);
             }
         }
 
@@ -1625,7 +1684,7 @@ private:
             }
         }
 
-        retries = 0;
+        int retries = 0;
         while (phaseB.size() < targetDrillCount && retries < 300) {
             retries++;
             std::string pw = generateQuadWord(allowedSet, key, 3, 6, rng);
@@ -1635,26 +1694,57 @@ private:
             }
         }
 
-        // Phase C: Cadence (flow, combination of unlocked keys)
-        std::vector<std::string> cadencePool;
-        for (const auto& w : realWords) if (!used.count(w)) cadencePool.push_back(w);
-        for (const auto& w : warmupReals) if (!used.count(w)) cadencePool.push_back(w);
-        std::shuffle(cadencePool.begin(), cadencePool.end(), rng);
-
-        for (const auto& w : cadencePool) {
-            if (phaseC.size() >= targetCadenceCount) break;
-            phaseC.push_back(w);
-            used.insert(w);
+        // Phase C: Cadence (flow, at least 80% target density)
+        size_t maxCadenceFillers = (targetCadenceCount <= 3) ? 0 : 1;
+        std::string cadenceFiller = "";
+        for (const auto& w : warmupReals) {
+            if (!used.count(w)) {
+                cadenceFiller = w;
+                used.insert(w);
+                break;
+            }
+        }
+        if (cadenceFiller.empty() && nonTargetAllowed.size() > 0 && maxCadenceFillers > 0) {
+            int retries = 0;
+            while (retries < 150) {
+                retries++;
+                std::string pw = generateQuadWord(nonTargetAllowed, '\0', 3, 5, rng);
+                if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
+                    cadenceFiller = pw;
+                    used.insert(pw);
+                    break;
+                }
+            }
         }
 
-        retries = 0;
-        while (phaseC.size() < targetCadenceCount && retries < 150) {
-            retries++;
-            bool reqT = (rng() % 2 == 0);
-            std::string pw = generateQuadWord(allowedSet, reqT ? key : '\0', 3, 5, rng);
-            if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
-                phaseC.push_back(pw);
-                used.insert(pw);
+        size_t cFillerSlot = (targetCadenceCount >= 4) ? 2 : 999;
+        for (size_t i = 0; i < targetCadenceCount; ++i) {
+            if (i == cFillerSlot && !cadenceFiller.empty()) {
+                phaseC.push_back(cadenceFiller);
+                continue;
+            }
+            std::string tw = "";
+            for (const auto& w : realWords) {
+                if (!used.count(w)) {
+                    tw = w;
+                    used.insert(w);
+                    break;
+                }
+            }
+            if (tw.empty()) {
+                int retries = 0;
+                while (retries < 150) {
+                    retries++;
+                    std::string pw = generateQuadWord(allowedSet, key, 3, 6, rng);
+                    if (!pw.empty() && (allowedSet.size() <= 2 || !used.count(pw))) {
+                        tw = pw;
+                        used.insert(pw);
+                        break;
+                    }
+                }
+            }
+            if (!tw.empty()) {
+                phaseC.push_back(tw);
             }
         }
 

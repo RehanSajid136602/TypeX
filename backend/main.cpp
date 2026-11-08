@@ -577,6 +577,36 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Load active profile mastery state from SQLite if available
+    {
+        std::string activeProfileIdStr = dbManager.getSetting("active_profile_id", "");
+        if (!activeProfileIdStr.empty()) {
+            try {
+                int64_t actId = std::stoll(activeProfileIdStr);
+                json targetMastery = dbManager.getMasteryProfile(actId);
+                if (targetMastery.is_object() && !targetMastery.empty()) {
+                    masteryEngine.loadFromJson(targetMastery);
+                    std::cout << "[INFO] Loaded mastery profile #" << actId << " from SQLite database." << std::endl;
+                }
+            } catch (...) {}
+        }
+    }
+
+    // Helper to persist current mastery engine state into SQLite for the active profile
+    auto persistActiveMastery = [&dbManager, &masteryEngine]() {
+        std::string activeId = dbManager.getSetting("active_profile_id", "");
+        int64_t profileId = 1;
+        if (!activeId.empty()) {
+            try { profileId = std::stoll(activeId); } catch (...) {}
+        } else {
+            json pList = dbManager.listProfiles();
+            if (!pList.empty()) profileId = pList[0]["id"].get<int64_t>();
+        }
+        if (profileId > 0) {
+            dbManager.saveMasteryProfile(profileId, masteryEngine.exportToJson());
+        }
+    };
+
     const std::string competitionStatePath = writableDataDir + "/competition_state.json";
     typex::CompetitionEngine competitionEngine(competitionStatePath, &pinManager);
 
@@ -946,11 +976,38 @@ int main(int argc, char** argv) {
         res.set_content(lesson.dump(), "application/json");
     });
 
+    // Endpoint 4b: POST /api/learn/advance
+    svr.Post("/api/learn/advance", [&masteryEngine, persistActiveMastery](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto payload = json::parse(req.body);
+            std::string track = payload.value("track", "phonetic_unlock");
+            std::string target = payload.value("target", "");
+
+            auto adv = masteryEngine.advanceTrack(track, target);
+            persistActiveMastery();
+
+            json resp = {
+                {"success", adv.first},
+                {"newTarget", adv.second},
+                {"status", masteryEngine.getStatus()}
+            };
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            json err = {
+                {"error", "Failed to advance learn track"},
+                {"details", e.what()}
+            };
+            res.status = 400;
+            res.set_content(err.dump(), "application/json");
+        }
+    });
+
     // Endpoint 5: POST /api/learn/submit
-    svr.Post("/api/learn/submit", [&masteryEngine](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/api/learn/submit", [&masteryEngine, persistActiveMastery](const httplib::Request& req, httplib::Response& res) {
         try {
             auto payload = json::parse(req.body);
             json delta = masteryEngine.submitTelemetry(payload);
+            persistActiveMastery();
             res.set_content(delta.dump(), "application/json");
         } catch (const std::exception& e) {
             json err = {

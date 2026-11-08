@@ -100,7 +100,7 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
         <span className="text-[10px] text-[var(--inactive-color)] opacity-70 uppercase tracking-wider">
           target
         </span>
-        <span className="px-1.5 py-0.5 rounded bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-bold text-xs uppercase">
+        <span data-testid="strip-target-chip" className="px-1.5 py-0.5 rounded bg-[var(--accent-color)]/10 text-[var(--accent-color)] font-bold text-xs uppercase">
           {effectiveTarget}
         </span>
         <span className="text-[var(--inactive-color)] opacity-40">·</span>

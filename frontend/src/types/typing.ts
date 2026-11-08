@@ -108,6 +108,16 @@ export interface LearnSubmitPayload {
   isDrill?: boolean;
 }
 
+export interface MasteryGateSnapshot {
+  target: string;
+  percentage: number;
+  achieved: boolean;
+  keystrokesDone: number;
+  keystrokesRequired: number;
+  accuracy: number;
+  advancingToToken?: string;
+}
+
 export interface MasteryDeltaReport {
   previousConfidence: number;
   newConfidence: number;
@@ -119,6 +129,7 @@ export interface MasteryDeltaReport {
   targetAccuracy?: number;
   targetSpeedWpm?: number;
   missedWords?: string[];
+  gateSnapshot?: MasteryGateSnapshot;
   weakestFinger: {
     finger: string;
     avgMs: number;

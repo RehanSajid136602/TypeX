@@ -15,13 +15,25 @@ import {
   LearnKeystroke,
   MasteryDeltaReport,
   LineCountOption,
+  KeyStatus,
+  MasteryGateSnapshot,
 } from "@/types/typing";
 import { RotateCcw, MousePointerClick } from "lucide-react";
 import { LiveSparkline } from "./LiveSparkline";
 
 import { sampleClientWords } from "@/utils/monkeytypeWordlists";
 import {
+  isGateAchieved,
+  getNextCurriculumTarget,
+  getAllowedLettersForTarget,
+  generateLearnBatch,
+  createMasteryGateSnapshot,
+} from "@/utils/learnGenerator";
+import {
   DrillItem,
+  DrillState,
+  initDrillState,
+  recordDrillOutcome,
   createInitialDrillQueue,
   reinsertDrillWord,
   findConfusableWords,
@@ -48,16 +60,28 @@ async function requestWordBatch(params: {
 
   try {
     if (mode === "learn") {
+      const activeTarget = (focusKey || "s").toLowerCase();
       const url = `/api/learn/lesson?track=${learnTrack || "phonetic_unlock"}&count=25${
-        focusKey ? `&focusKey=${encodeURIComponent(focusKey)}` : ""
+        activeTarget ? `&focusKey=${encodeURIComponent(activeTarget)}` : ""
       }&_t=${Date.now()}`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error("Learn API error");
       const data = await res.json();
       if (data && Array.isArray(data.words) && data.words.length > 0) {
+        const target = (data.activeTarget || activeTarget).toLowerCase();
+        const targetCount = data.words.filter((w: string) => w.toLowerCase().includes(target)).length;
+        if (targetCount >= Math.ceil(data.words.length * 0.8)) {
+          return {
+            words: data.words,
+            activeTarget: target,
+            isPatternDrill: Boolean(data.isPatternDrill),
+          };
+        }
+        // Guarantee >= 80% target density with pure generator
+        const allowed = getAllowedLettersForTarget(target);
         return {
-          words: data.words,
-          activeTarget: data.activeTarget || "s",
+          words: generateLearnBatch(allowed, target, data.words.length, Math.random, recent),
+          activeTarget: target,
           isPatternDrill: Boolean(data.isPatternDrill),
         };
       }
@@ -77,6 +101,16 @@ async function requestWordBatch(params: {
   }
 
   // Fallback to client-side authentic Monkeytype words with rank-decay and zero repeats
+  if (mode === "learn") {
+    const target = (focusKey || "s").toLowerCase();
+    const allowed = getAllowedLettersForTarget(target);
+    return {
+      words: generateLearnBatch(allowed, target, count || 25, Math.random, recent),
+      activeTarget: target,
+      isPatternDrill: false,
+    };
+  }
+
   return {
     words: sampleClientWords(tier, count, recent),
   };
@@ -221,6 +255,8 @@ interface TypingArenaProps {
   errorBehavior: ErrorBehavior;
   learnTrack?: LearnTrack;
   focusKey?: string | null;
+  keyStatuses?: KeyStatus[];
+  onTargetUnlock?: (newTarget: string, updatedStatuses: KeyStatus[]) => void;
   onLearnFinish?: (delta: MasteryDeltaReport) => void;
   onFinish: (result: TelemetryResult, errorSeconds: number[]) => void;
   onActivity: () => void;
@@ -243,6 +279,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   errorBehavior,
   learnTrack,
   focusKey,
+  keyStatuses,
+  onTargetUnlock,
   onLearnFinish,
   onFinish,
   onActivity,
@@ -266,11 +304,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const [drillCleanCounts, setDrillCleanCounts] = useState<Record<string, number>>({});
   const drillCleanCountsRef = useRef<Record<string, number>>({});
   const drillCandidatePoolRef = useRef<string[]>([]);
+  const drillStateRef = useRef<DrillState | null>(null);
+  const frozenGateSnapshotRef = useRef<MasteryGateSnapshot | null>(null);
 
   const [activeTargetKey, setActiveTargetKey] = useState<string>(focusKey || "s");
   const [isPatternDrill, setIsPatternDrill] = useState<boolean>(false);
 
   const lessonActiveTargetRef = useRef<string>("s");
+  const liveTargetStatRef = useRef<KeyStatus | null>(null);
+  const advancedTargetsRef = useRef<Set<string>>(new Set());
+  const [milestoneToast, setMilestoneToast] = useState<{ unlockedKey: string; isComplete?: boolean } | null>(null);
+  const milestoneTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const repairQueueRef = useRef<string[]>([]);
   const repairedWordsSet = useRef<Set<string>>(new Set());
   const missedWordsSet = useRef<Set<string>>(new Set());
@@ -344,7 +388,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   // Fetch words from backend (used by reset actions and key handlers)
   const fetchWords = useCallback(
     async (count: number, append = false, recentWords?: string[]) => {
-      const batch = await requestWordBatch({ mode, tier, learnTrack, focusKey, count, recent: recentWords });
+      const activeKey = focusKey || lessonActiveTargetRef.current;
+      const batch = await requestWordBatch({ mode, tier, learnTrack, focusKey: activeKey, count, recent: recentWords });
       if (batch.activeTarget) {
         lessonActiveTargetRef.current = batch.activeTarget;
         setActiveTargetKey(batch.activeTarget);
@@ -356,6 +401,133 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     },
     [mode, tier, learnTrack, focusKey]
   );
+
+  // ── Auto-advance at 100% ──────────────────────────────────────────────────
+  const triggerAutoAdvance = useCallback(
+    async (currentTarget: string) => {
+      const lowerTarget = currentTarget.toLowerCase();
+      if (advancedTargetsRef.current.has(lowerTarget)) return;
+      advancedTargetsRef.current.add(lowerTarget);
+
+      const nextTarget = getNextCurriculumTarget(lowerTarget);
+
+      // Freeze snapshot of the target that just achieved 100%
+      const stat = liveTargetStatRef.current || keyStatuses?.find((s) => s.key.toLowerCase() === lowerTarget);
+      const snapshot = createMasteryGateSnapshot(lowerTarget, stat, nextTarget || undefined);
+      snapshot.achieved = true;
+      snapshot.percentage = 100;
+      frozenGateSnapshotRef.current = snapshot;
+
+      if (!nextTarget) {
+        // After 'j': curriculum complete state
+        if (milestoneTimeoutRef.current) clearTimeout(milestoneTimeoutRef.current);
+        setMilestoneToast({ unlockedKey: "j", isComplete: true });
+        milestoneTimeoutRef.current = setTimeout(() => {
+          setMilestoneToast(null);
+        }, 3500);
+        return;
+      }
+
+      // 1. Unlock the next letter in the curriculum order and make it the new target
+      lessonActiveTargetRef.current = nextTarget;
+      setActiveTargetKey(nextTarget);
+
+      // 2. Update keyboard strip and target chip immediately
+      const currentStatuses = keyStatuses || [];
+      const updatedStatuses: KeyStatus[] = currentStatuses.map((s) => {
+        if (s.key.toLowerCase() === lowerTarget) {
+          return { ...s, status: "mastered" as const, confidence: 100, bestSpeedConfidence: 1.0 };
+        }
+        if (s.key.toLowerCase() === nextTarget.toLowerCase()) {
+          return { ...s, status: "active" as const };
+        }
+        return s;
+      });
+      if (!updatedStatuses.some((s) => s.key.toLowerCase() === nextTarget.toLowerCase())) {
+        updatedStatuses.push({
+          key: nextTarget,
+          confidence: 0,
+          emaFlightMs: 350,
+          attempts: 0,
+          errors: 0,
+          status: "active",
+        });
+      }
+      onTargetUnlock?.(nextTarget, updatedStatuses);
+
+      // Initialize live stat for the new target
+      liveTargetStatRef.current = {
+        key: nextTarget,
+        confidence: 0,
+        emaFlightMs: 350,
+        attempts: 0,
+        errors: 0,
+        status: "active",
+      };
+
+      // 3. Regenerate only UPCOMING words using new target and 80% rule
+      const currIdx = currentWordIdxRef.current;
+      const allowedLetters = getAllowedLettersForTarget(nextTarget);
+      setWords((prevWords) => {
+        const typedOrCurrent = prevWords.slice(0, currIdx + 1);
+        const upcomingCount = Math.max(10, prevWords.length - (currIdx + 1));
+        const newUpcoming = generateLearnBatch(
+          allowedLetters,
+          nextTarget,
+          upcomingCount,
+          Math.random,
+          typedOrCurrent
+        );
+        return [...typedOrCurrent, ...newUpcoming];
+      });
+
+      // 4. Show milestone as a small non-blocking toast
+      if (milestoneTimeoutRef.current) clearTimeout(milestoneTimeoutRef.current);
+      setMilestoneToast({ unlockedKey: nextTarget });
+      milestoneTimeoutRef.current = setTimeout(() => {
+        setMilestoneToast(null);
+      }, 3500);
+
+      // 5. Persist the new unlocked state through the backend with raw SQL
+      try {
+        await fetch("/api/learn/advance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            track: learnTrack || "phonetic_unlock",
+            target: lowerTarget,
+            newTarget: nextTarget,
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to persist target advance", err);
+      }
+    },
+    [keyStatuses, onTargetUnlock, learnTrack]
+  );
+
+  // Sync liveTargetStatRef and evaluate gate at start
+  useEffect(() => {
+    if (mode !== "learn") return;
+    const target = (lessonActiveTargetRef.current || activeTargetKey || "s").toLowerCase();
+    const stat = keyStatuses?.find((s) => s.key.toLowerCase() === target);
+    if (stat) {
+      liveTargetStatRef.current = { ...stat };
+    } else {
+      liveTargetStatRef.current = {
+        key: target,
+        confidence: 0,
+        emaFlightMs: 350,
+        attempts: 0,
+        errors: 0,
+        status: "active",
+      };
+    }
+    // Advance on first evaluation if already achieved
+    if (isGateAchieved(liveTargetStatRef.current) && !advancedTargetsRef.current.has(target)) {
+      triggerAutoAdvance(target);
+    }
+  }, [keyStatuses, activeTargetKey, mode, triggerAutoAdvance]);
 
   // Complete the test and invoke backend C++ telemetry analysis
   const finalizeTest = useCallback(async () => {
@@ -466,22 +638,45 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       ? (now - startTimeRef.current) / 1000.0
       : 25.0;
 
+    const activeTarget = (lessonActiveTargetRef.current || "s").toLowerCase();
+    const stat = liveTargetStatRef.current || keyStatuses?.find((s) => s.key.toLowerCase() === activeTarget);
+    if (!frozenGateSnapshotRef.current) {
+      frozenGateSnapshotRef.current = createMasteryGateSnapshot(
+        activeTarget,
+        stat,
+        getNextCurriculumTarget(activeTarget) || undefined
+      );
+    }
+    const gateSnapshot = frozenGateSnapshotRef.current;
+
+    // Both drill pool and missed words list on results screen must be the same list
+    const finalMissedWords = Array.from(new Set(missedWordsSet.current));
+
     try {
       const res = await fetch("/api/learn/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           track: learnTrack || "phonetic_unlock",
-          activeTarget: lessonActiveTargetRef.current || "s",
+          activeTarget: gateSnapshot.target,
           durationSeconds: Math.max(1.0, duration),
           keystrokes: learnKeystrokesRef.current,
           repairedWords: Array.from(repairedWordsSet.current),
-          missedWords: Array.from(missedWordsSet.current),
+          missedWords: finalMissedWords,
+          gateSnapshot,
         }),
       });
 
       if (res.ok) {
         const delta: MasteryDeltaReport = await res.json();
+        delta.gateSnapshot = gateSnapshot;
+        if (gateSnapshot.achieved) {
+          delta.passedGate = true;
+          delta.unlockedNewTarget = true;
+          delta.newActiveTarget = gateSnapshot.advancingToToken || delta.newActiveTarget;
+          delta.newConfidence = 100;
+        }
+        delta.missedWords = finalMissedWords;
         onLearnFinish?.(delta);
         return;
       }
@@ -491,7 +686,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
     // Fallback to legacy finish
     finalizeTest();
-  }, [learnTrack, onLearnFinish, finalizeTest]);
+  }, [learnTrack, onLearnFinish, finalizeTest, keyStatuses]);
 
   const finalizeTestRef = useRef(finalizeTest);
   useEffect(() => {
@@ -500,29 +695,21 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // Start Interleaved Neural Lock-In Drill
   const startLockInDrill = useCallback(() => {
-    const targetWords = Array.from(new Set(repairQueueRef.current));
+    // Both drill pool and missed words list on results screen are the exact same list
+    const targetWords = Array.from(new Set(missedWordsSet.current));
     if (targetWords.length === 0) {
       finalizeLearnTest();
       return;
     }
 
-    const paddingNeeded = Math.max(3, 3 - targetWords.length);
-    const padding = findConfusableWords(targetWords, words, paddingNeeded);
-    const initialPadding = targetWords.length < 3 ? padding.slice(0, 3 - targetWords.length) : [];
-    const initialQueue = createInitialDrillQueue(targetWords, initialPadding);
-    const initialCleanCounts: Record<string, number> = {};
-    targetWords.forEach((w) => {
-      initialCleanCounts[w] = 0;
-    });
+    const state = initDrillState(targetWords, words);
+    drillStateRef.current = state;
+    drillQueueRef.current = state.queue;
+    drillCleanCountsRef.current = state.cleanCounts;
 
-    const candidatePool = [...targetWords, ...padding];
-    drillCandidatePoolRef.current = candidatePool;
-    drillCleanCountsRef.current = initialCleanCounts;
-    drillQueueRef.current = initialQueue;
-
-    setDrillTargetWords(targetWords);
-    setDrillCleanCounts(initialCleanCounts);
-    setDrillQueue(initialQueue);
+    setDrillTargetWords(state.targetWords);
+    setDrillCleanCounts(state.cleanCounts);
+    setDrillQueue(state.queue);
     setInLockInDrill(true);
     currentInputRef.current = "";
     setCurrentInput("");
@@ -550,6 +737,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     setInLockInDrill(false);
     setDrillQueue([]);
     drillQueueRef.current = [];
+    drillStateRef.current = null;
+    frozenGateSnapshotRef.current = null;
     setDrillTargetWords([]);
     setDrillCleanCounts({});
     drillCleanCountsRef.current = {};
@@ -559,6 +748,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     missedWordsSet.current.clear();
     firstAttemptKeyIndices.current.clear();
     learnKeystrokesRef.current = [];
+    advancedTargetsRef.current.clear();
     lastKeyTimeRef.current = 0;
     lastTypedCharRef.current = "";
 
@@ -587,7 +777,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     let cancelled = false;
     const count = mode === "learn" ? 25 : mode === "time" ? 100 : wordsOption;
 
-    requestWordBatch({ mode, tier, learnTrack, focusKey, count }).then((batch) => {
+    const activeTarget = focusKey || (keyStatuses?.find((s) => s.status === "active")?.key) || lessonActiveTargetRef.current;
+    requestWordBatch({ mode, tier, learnTrack, focusKey: activeTarget, count }).then((batch) => {
       if (cancelled) return;
       if (batch.activeTarget) {
         lessonActiveTargetRef.current = batch.activeTarget;
@@ -663,7 +854,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     isFetchingMoreRef.current = true;
     let cancelled = false;
     const recentWords = words.slice(-20);
-    requestWordBatch({ mode, tier, learnTrack, focusKey, count: 100, recent: recentWords })
+    const activeTarget = lessonActiveTargetRef.current || focusKey || "s";
+    requestWordBatch({ mode, tier, learnTrack, focusKey: activeTarget, count: 100, recent: recentWords })
       .then((batch) => {
         if (!cancelled && batch.words.length > 0) {
           setWords((prev) => [...prev, ...batch.words]);
@@ -869,81 +1061,49 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       }
 
       const currentItem = drillQueueRef.current[0];
-      if (!currentItem) {
+      if (!currentItem || (drillStateRef.current && drillStateRef.current.isComplete)) {
         finalizeLearnTest();
         return;
       }
 
-      const handleDrillSuccess = (item: DrillItem) => {
-        onWordComplete();
-        const word = item.word;
+      const applyDrillOutcome = (outcome: "clean" | "mistake") => {
+        if (!drillStateRef.current) return;
+        const nextState = recordDrillOutcome(
+          drillStateRef.current,
+          outcome,
+          words
+        );
+        drillStateRef.current = nextState;
+        drillQueueRef.current = nextState.queue;
+        drillCleanCountsRef.current = nextState.cleanCounts;
 
-        if (!item.isPadding) {
-          const currentClean = drillCleanCountsRef.current[word] || 0;
-          const nextClean = currentClean + 1;
-          const updatedCounts = { ...drillCleanCountsRef.current, [word]: nextClean };
-          drillCleanCountsRef.current = updatedCounts;
-          setDrillCleanCounts(updatedCounts);
+        setDrillQueue(nextState.queue);
+        setDrillCleanCounts(nextState.cleanCounts);
+        setDrillTargetWords(nextState.targetWords);
 
-          if (nextClean >= 3) {
-            repairedWordsSet.current.add(word);
-          }
+        if (outcome === "clean" && (nextState.cleanCounts[currentItem.word] || 0) >= 3) {
+          repairedWordsSet.current.add(currentItem.word);
+        }
 
-          const allDone = drillTargetWords.every((w) => (updatedCounts[w] || 0) >= 3);
-          if (allDone) {
-            finalizeLearnTest();
-            return;
-          }
-
-          if (nextClean < 3) {
-            const remaining = drillQueueRef.current.slice(1);
-            const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
-            drillQueueRef.current = nextQueue;
-            setDrillQueue(nextQueue);
-          } else {
-            const nextQueue = drillQueueRef.current.slice(1);
-            drillQueueRef.current = nextQueue;
-            setDrillQueue(nextQueue);
-          }
-        } else {
-          // Padding word completed cleanly
-          const remaining = drillQueueRef.current.slice(1);
-          const anyUnmastered = drillTargetWords.some((w) => (drillCleanCountsRef.current[w] || 0) < 3);
-          if (anyUnmastered) {
-            const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
-            drillQueueRef.current = nextQueue;
-            setDrillQueue(nextQueue);
-          } else {
-            drillQueueRef.current = remaining;
-            setDrillQueue(remaining);
-          }
+        if (nextState.isComplete || nextState.queue.length === 0) {
+          finalizeLearnTest();
+          return;
         }
 
         currentInputRef.current = "";
         setCurrentInput("");
       };
 
-      const handleDrillMistake = (item: DrillItem) => {
+      const handleDrillSuccess = (_item: DrillItem) => {
+        onWordComplete();
+        applyDrillOutcome("clean");
+      };
+
+      const handleDrillMistake = (_item: DrillItem) => {
         setStopErrorFlash(true);
         setTimeout(() => setStopErrorFlash(false), 200);
         onKeyError();
-
-        const word = item.word;
-        if (!item.isPadding) {
-          const currentClean = drillCleanCountsRef.current[word] || 0;
-          const nextClean = Math.max(0, currentClean - 1);
-          const updatedCounts = { ...drillCleanCountsRef.current, [word]: nextClean };
-          drillCleanCountsRef.current = updatedCounts;
-          setDrillCleanCounts(updatedCounts);
-        }
-
-        const remaining = drillQueueRef.current.slice(1);
-        const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
-        drillQueueRef.current = nextQueue;
-        setDrillQueue(nextQueue);
-
-        currentInputRef.current = "";
-        setCurrentInput("");
+        applyDrillOutcome("mistake");
       };
 
       if (e.key === " " || e.key === "Space" || e.key === "Enter") {
@@ -1212,10 +1372,45 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         const isTargetChar = Boolean(expectedChar && expectedChar.toLowerCase() === targetLetter);
         if (!isCharCorrect) {
           missedWordsSet.current.add(targetWord);
-        }
-        if (!isCharCorrect || (isTargetChar && flightMs > 450)) {
           if (!repairQueueRef.current.includes(targetWord)) {
             repairQueueRef.current.push(targetWord);
+          }
+        }
+
+        if (isTargetChar) {
+          const stat = liveTargetStatRef.current || {
+            key: targetLetter,
+            confidence: 0,
+            emaFlightMs: 350,
+            attempts: 0,
+            errors: 0,
+            status: "active",
+          };
+          stat.attempts = (stat.attempts || 0) + 1;
+          stat.samples = (stat.samples || 0) + 1;
+          if (isFirstAttempt) {
+            stat.firstAttemptAttempts = (stat.firstAttemptAttempts || 0) + 1;
+          }
+          if (isCharCorrect) {
+            const TARGET_TIME_MS = 342.86; // 35 WPM
+            const curFlight = Math.min(2000, flightMs);
+            stat.bestFlightMs =
+              stat.bestFlightMs && stat.bestFlightMs > 0
+                ? Math.min(stat.bestFlightMs, curFlight)
+                : curFlight;
+            stat.bestSpeedConfidence = TARGET_TIME_MS / stat.bestFlightMs;
+            stat.confidence = Math.min(100, Math.round(stat.bestSpeedConfidence * 100));
+          } else {
+            stat.errors = (stat.errors || 0) + 1;
+            if (isFirstAttempt) {
+              stat.firstAttemptErrors = (stat.firstAttemptErrors || 0) + 1;
+            }
+          }
+          liveTargetStatRef.current = stat;
+
+          // Single source of truth gate check
+          if (isGateAchieved(stat) && !advancedTargetsRef.current.has(targetLetter)) {
+            triggerAutoAdvance(targetLetter);
           }
         }
       }
@@ -1407,9 +1602,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                     />
                   );
                 })}
-                <span className="ml-1 text-[var(--typed-color)] opacity-95 font-mono-custom font-semibold">
-                  [{Math.min(3, drillCleanCounts[drillQueue[0]?.word || ""] || 0)}/3 Clean]
-                </span>
               </div>
             )}
             <button
@@ -1419,6 +1611,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               Skip Drill (Esc)
             </button>
           </div>
+          <span className="text-[10px] text-[var(--inactive-color)] opacity-50 tracking-wide">
+            Words are mixed together · 3 clean passes per word required · Mistakes push word back
+          </span>
         </div>
       ) : mode === "learn" ? (
         <div className="w-full flex items-center justify-between mb-2 font-mono-custom">
@@ -1436,6 +1631,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                 ? "Phase B · Target Drill"
                 : "Phase C · Cadence Lock"}
             </span>
+            <div className="flex items-center gap-1.5 ml-1">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-color)] opacity-40 font-mono-custom">
+                Target:
+              </span>
+              <span data-testid="target-chip" className="px-2 py-0.5 rounded text-xs font-mono-custom font-bold bg-[var(--accent-color)]/10 text-[var(--accent-color)] border border-[var(--accent-color)]/25">
+                {activeTargetKey.toUpperCase()}
+              </span>
+            </div>
             {isPatternDrill && (
               <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold font-mono-custom">
                 Pattern Drill
@@ -1467,7 +1670,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       {/* 3-Line Viewport Container or Neural Lock-In Drill View */}
       {inLockInDrill ? (
         <div className="w-full h-[168px] flex flex-col items-center justify-center text-center arena-mask py-1 select-none">
-          <div className="text-4xl sm:text-5xl font-mono-custom tracking-wider flex items-center justify-center gap-1 mb-3">
+          <div data-testid="drill-active-word" className="text-4xl sm:text-5xl font-mono-custom tracking-wider flex items-center justify-center gap-1 mb-3">
             {(drillQueue[0]?.word || "").split("").map((targetChar, cIdx) => {
               let charColor = "var(--untyped-color)";
               let charOpacity: number | string = "var(--untyped-opacity)";
@@ -1608,6 +1811,18 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Milestone Toast (non-blocking, pointer-events-none, auto-dismiss) */}
+      {milestoneToast && (
+        <div data-testid="milestone-toast" className="fixed top-6 right-6 z-50 pointer-events-none flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-[var(--surface-color)]/95 backdrop-blur-md border border-[var(--accent-color)]/50 text-[var(--accent-color)] text-xs font-mono-custom shadow-[0_4px_24px_rgba(0,0,0,0.6)] animate-in fade-in slide-in-from-top-2 duration-300">
+          <span className="w-2 h-2 rounded-full bg-[var(--accent-color)] animate-ping" />
+          <span className="font-semibold tracking-wide">
+            {milestoneToast.isComplete
+              ? "Curriculum Complete! All 26 letters unlocked."
+              : `Milestone: Key [ ${milestoneToast.unlockedKey.toUpperCase()} ] Unlocked!`}
+          </span>
         </div>
       )}
 

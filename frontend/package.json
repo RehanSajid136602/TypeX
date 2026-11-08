@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:learn": "tsx src/utils/learnGenerator.test.ts",
+    "test:drill": "tsx src/utils/drillScheduler.test.ts",
     "backup:event": "node scripts/backup_event.js"
   },
   "dependencies": {

@@ -67,11 +67,26 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onContinue]);
 
-  // The gate is met at the target speed; never show more strokes than the
-  // minimum the gate requires.
-  const gateAchieved = delta.passedGate === true;
-  const targetStrokes = Math.min(MIN_TARGET_ATTEMPTS, delta.targetAttempts ?? 0);
-  const gatePercent = Math.min(100, Math.round(delta.newConfidence));
+  // The gate is met at the target speed; snapshot is the single frozen source of truth
+  const snapshot = delta.gateSnapshot;
+  const gateAchieved = snapshot
+    ? snapshot.achieved
+    : delta.passedGate === true || delta.unlockedNewTarget === true;
+  const targetStrokes = snapshot
+    ? snapshot.keystrokesDone
+    : Math.min(MIN_TARGET_ATTEMPTS, delta.targetAttempts ?? 0);
+  const targetRequired = snapshot
+    ? snapshot.keystrokesRequired
+    : MIN_TARGET_ATTEMPTS;
+  const targetAccuracy = snapshot
+    ? snapshot.accuracy
+    : delta.targetAccuracy ?? 100;
+  const gatePercent = gateAchieved
+    ? 100
+    : snapshot
+    ? Math.min(99, Math.max(0, Math.round(snapshot.percentage)))
+    : Math.min(99, Math.max(0, Math.round(delta.newConfidence)));
+  const advancingToken = snapshot?.advancingToToken || delta.newActiveTarget;
 
   const fingerOrder = [
     { id: "L_PINKY", label: "L-PK", hand: "L" },
@@ -111,7 +126,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
       className="w-full max-w-4xl mx-auto px-6 py-4 flex flex-col gap-6 select-none font-mono-custom"
     >
       {/* Unlock Milestone Banner if achieved */}
-      {delta.unlockedNewTarget ? (
+      {gateAchieved ? (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -126,24 +141,24 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
                 Curriculum Milestone Unlocked!
               </div>
               <div className="text-sm text-[var(--typed-color)]">
-                Reached 35 WPM target speed with &ge; 95% accuracy. Advancing to next token: [ <span className="font-bold text-[var(--accent-color)] uppercase">{delta.newActiveTarget}</span> ]
+                Reached 35 WPM target speed with &ge; 95% accuracy. Advancing to next token: [ <span className="font-bold text-[var(--accent-color)] uppercase">{advancingToken}</span> ]
               </div>
             </div>
           </div>
           <Sparkles className="w-5 h-5 text-[var(--accent-color)] opacity-70" />
         </motion.div>
-      ) : delta.passedGate === false ? (
+      ) : (
         <div className="w-full p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs font-mono-custom text-amber-200">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
               Target gate requires 35 WPM target speed with &ge; 95.0% accuracy (achieved:{" "}
-              <strong className="text-white font-bold">{delta.targetAccuracy ?? 0}%</strong> across{" "}
-              <strong className="text-white font-bold">{targetStrokes}</strong>/{MIN_TARGET_ATTEMPTS} strokes). Keep practicing to unlock next key!
+              <strong className="text-white font-bold">{targetAccuracy}%</strong> across{" "}
+              <strong className="text-white font-bold">{targetStrokes}</strong>/{targetRequired} strokes). Keep practicing to unlock next key!
             </span>
           </div>
         </div>
-      ) : null}
+      )}
 
       {/* Hero Mastery Progression Card */}
       <div className="rounded-xl bg-white/[0.015] border border-white/[0.05] p-6 flex flex-col gap-4">
@@ -160,26 +175,26 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           <div className="flex items-baseline gap-3">
             <span
               className={`text-4xl md:text-5xl font-light tabular-nums ${
-                gateAchieved ? "text-emerald-400" : "text-[var(--accent-color)]"
+                gateAchieved ? "text-emerald-400" : "text-amber-400"
               }`}
             >
               {gatePercent}%
             </span>
             <span
               className={`text-sm font-medium ${
-                delta.passedGate
+                gateAchieved
                   ? "text-emerald-400"
-                  : "text-[#e06c75]"
+                  : "text-amber-400"
               }`}
             >
-              {delta.passedGate ? "TARGET REACHED" : "PRACTICING"}
+              {gateAchieved ? "TARGET REACHED" : "PRACTICING"}
             </span>
           </div>
 
           <div className="text-xs text-[var(--inactive-color)] opacity-75">
-            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{targetStrokes} / {MIN_TARGET_ATTEMPTS}</span>
-            {delta.targetAccuracy !== undefined && (
-              <span className="ml-3">Accuracy: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAccuracy}%</span></span>
+            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{targetStrokes} / {targetRequired}</span>
+            {targetAccuracy !== undefined && (
+              <span className="ml-3">Accuracy: <span className="tabular-nums font-medium text-[var(--typed-color)]">{targetAccuracy}%</span></span>
             )}
           </div>
         </div>
@@ -188,13 +203,13 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
         <div className="w-full relative py-1">
           <div className="w-full h-2.5 rounded-full bg-white/[0.06] overflow-hidden relative">
             <motion.div
-              initial={{ width: `${Math.min(100, delta.previousConfidence)}%` }}
-              animate={{ width: `${Math.min(100, delta.newConfidence)}%` }}
+              initial={{ width: `${gateAchieved ? 100 : Math.min(100, delta.previousConfidence)}%` }}
+              animate={{ width: `${gateAchieved ? 100 : gatePercent}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className={`h-full rounded-full ${
                 gateAchieved
                   ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]"
-                  : "bg-gradient-to-r from-[var(--accent-secondary)] to-[var(--accent-color)] shadow-[0_0_8px_var(--accent-glow)]"
+                  : "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]"
               }`}
             />
           </div>
@@ -333,7 +348,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
 
       {/* Missed Words Section */}
       {delta.missedWords && delta.missedWords.length > 0 && (
-        <div className="rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 flex flex-col gap-2">
+        <div data-testid="missed-words-section" className="rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 flex flex-col gap-2">
           <span className="text-[10px] uppercase tracking-wider text-[var(--inactive-color)] opacity-80">
             Missed Words (Queued for Spaced Repetition)
           </span>

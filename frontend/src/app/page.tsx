@@ -15,6 +15,7 @@ import {
   MasteryDeltaReport,
   MasteryStatus,
   LineCountOption,
+  KeyStatus,
 } from "@/types/typing";
 import { Header } from "@/components/Header";
 import { ConfigBar } from "@/components/ConfigBar";
@@ -315,6 +316,23 @@ export default function Home() {
     }
   }, [activeProfile, isGuest, mode, timeOption, wordsOption, tier, errorBehavior, learnTrack]);
 
+  const handleTargetUnlock = useCallback(
+    (newTarget: string, updatedStatuses: KeyStatus[]) => {
+      setMasteryStatus((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          trackActiveTarget: {
+            ...prev.trackActiveTarget,
+            [learnTrack]: newTarget,
+          },
+          keyStatuses: updatedStatuses,
+        };
+      });
+    },
+    [learnTrack]
+  );
+
   const handleLearnFinish = useCallback((delta: MasteryDeltaReport) => {
     setMasteryDelta(delta);
     setIsFocusMode(false);
@@ -432,6 +450,8 @@ export default function Home() {
                 errorBehavior={errorBehavior}
                 learnTrack={learnTrack}
                 focusKey={focusKey}
+                keyStatuses={masteryStatus?.keyStatuses || []}
+                onTargetUnlock={handleTargetUnlock}
                 onLearnFinish={handleLearnFinish}
                 onFinish={handleTestFinish}
                 onActivity={handleActivity}
