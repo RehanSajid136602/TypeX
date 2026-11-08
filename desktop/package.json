@@ -1,0 +1,82 @@
+{
+  "name": "typex-desktop",
+  "productName": "TypeX",
+  "version": "0.3.1",
+  "private": true,
+  "description": "TypeX desktop application",
+  "author": "TypeX Team",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.typex.desktop",
+    "productName": "TypeX",
+    "copyright": "Copyright © TypeX Team",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/typex_server.exe",
+        "to": "backend/typex_server.exe"
+      },
+      {
+        "from": "backend/data",
+        "to": "backend/data",
+        "filter": [
+          "**/*.txt",
+          "WORDLISTS.md"
+        ]
+      },
+      {
+        "from": "../frontend/out",
+        "to": "web"
+      }
+    ],
+    "electronLanguages": [
+      "en-US"
+    ],
+    "win": {
+      "icon": "../assets/icons/typex.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TypeX",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerIcon": "../assets/icons/typex.ico",
+      "uninstallerIcon": "../assets/icons/typex.ico",
+      "include": "build/installer.nsh",
+      "artifactName": "TypeX-${version}-Setup.${ext}",
+      "license": "../packaging/windows/LICENSE.txt"
+    },
+    "forceCodeSigning": false
+  }
+}

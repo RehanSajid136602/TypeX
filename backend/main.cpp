@@ -23,7 +23,6 @@
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <windows.h>
-#include <shellapi.h>
 #include <time.h>
 
 inline struct tm* portable_gmtime_r(const time_t* timer, struct tm* buf) {
@@ -459,70 +458,8 @@ private:
     }
 };
 
-#ifdef _WIN32
-static std::string find_windows_app_browser() {
-    auto check_reg = [](HKEY root, const char* subkey) -> std::string {
-        HKEY hKey;
-        if (RegOpenKeyExA(root, subkey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-            char path[MAX_PATH] = {0};
-            DWORD pathLen = sizeof(path);
-            if (RegQueryValueExA(hKey, NULL, NULL, NULL, (LPBYTE)path, &pathLen) == ERROR_SUCCESS) {
-                RegCloseKey(hKey);
-                std::string res(path);
-                if (res.size() >= 2 && res.front() == '"' && res.back() == '"') {
-                    res = res.substr(1, res.size() - 2);
-                }
-                return res;
-            }
-            RegCloseKey(hKey);
-        }
-        return "";
-    };
-
-    std::string path = check_reg(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe");
-    if (!path.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES) return path;
-
-    path = check_reg(HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe");
-    if (!path.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES) return path;
-
-    path = check_reg(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe");
-    if (!path.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES) return path;
-
-    path = check_reg(HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe");
-    if (!path.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES) return path;
-
-    char progFilesX86[MAX_PATH] = {0};
-    char progFiles[MAX_PATH] = {0};
-    char localAppData[MAX_PATH] = {0};
-
-    std::vector<std::string> candidates;
-    if (GetEnvironmentVariableA("ProgramFiles(x86)", progFilesX86, MAX_PATH) > 0) {
-        candidates.push_back(std::string(progFilesX86) + "\\Microsoft\\Edge\\Application\\msedge.exe");
-        candidates.push_back(std::string(progFilesX86) + "\\Google\\Chrome\\Application\\chrome.exe");
-    }
-    if (GetEnvironmentVariableA("ProgramFiles", progFiles, MAX_PATH) > 0) {
-        candidates.push_back(std::string(progFiles) + "\\Microsoft\\Edge\\Application\\msedge.exe");
-        candidates.push_back(std::string(progFiles) + "\\Google\\Chrome\\Application\\chrome.exe");
-    }
-    if (GetEnvironmentVariableA("LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
-        candidates.push_back(std::string(localAppData) + "\\Microsoft\\Edge\\Application\\msedge.exe");
-        candidates.push_back(std::string(localAppData) + "\\Google\\Chrome\\Application\\chrome.exe");
-    }
-
-    candidates.push_back("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe");
-    candidates.push_back("C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe");
-    candidates.push_back("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
-    candidates.push_back("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe");
-
-    for (const auto& c : candidates) {
-        if (!c.empty() && GetFileAttributesA(c.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            return c;
-        }
-    }
-
-    return "";
-}
-#endif
+// Windows desktop launching is handled by the Electron shell (desktop/).
+// The backend runs headless and serves the static frontend + API.
 
 int main(int argc, char** argv) {
 #ifdef _WIN32
@@ -2157,66 +2094,6 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "[INFO] TypeX C++ Server listening on http://" << host << ":" << port << std::endl;
-#ifdef _WIN32
-    if (!headless) {
-        std::string appUrl = "http://127.0.0.1:" + std::to_string(port);
-        std::thread([appUrl, &svr]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-            std::string browserPath = find_windows_app_browser();
-
-            char localAppData[MAX_PATH] = {0};
-            std::string profileDir = "";
-            if (GetEnvironmentVariableA("LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
-                profileDir = std::string(localAppData) + "\\TypeX\\webview_profile";
-                CreateDirectoryA((std::string(localAppData) + "\\TypeX").c_str(), NULL);
-                CreateDirectoryA(profileDir.c_str(), NULL);
-            }
-
-            bool launched = false;
-            if (!browserPath.empty()) {
-                std::string cmd = "\"" + browserPath + "\" --app=\"" + appUrl + "\""
-                                + " --window-size=1200,800"
-                                + " --no-first-run"
-                                + " --no-default-browser-check"
-                                + " --disable-features=Translate,InterestFeedContentSuggestions";
-                if (!profileDir.empty()) {
-                    cmd += " --user-data-dir=\"" + profileDir + "\"";
-                }
-
-                STARTUPINFOA si;
-                PROCESS_INFORMATION pi;
-                ZeroMemory(&si, sizeof(si));
-                si.cb = sizeof(si);
-                ZeroMemory(&pi, sizeof(pi));
-
-                std::vector<char> cmdBuf(cmd.begin(), cmd.end());
-                cmdBuf.push_back('\0');
-
-                if (CreateProcessA(NULL, cmdBuf.data(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-                    launched = true;
-                    // Block until the user closes the native app window
-                    WaitForSingleObject(pi.hProcess, INFINITE);
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-
-                    // When window closes, stop backend and cleanly exit
-                    svr.stop();
-                    return;
-                }
-            }
-
-            if (!launched) {
-                // Secondary fallback: msedge --app via ShellExecute
-                HINSTANCE hInst = ShellExecuteA(NULL, "open", "msedge.exe", ("--app=" + appUrl).c_str(), NULL, SW_SHOWNORMAL);
-                if ((INT_PTR)hInst <= 32) {
-                    // Final fallback: regular browser open
-                    ShellExecuteA(NULL, "open", appUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                }
-            }
-        }).detach();
-    }
-#endif
     bool success = svr.listen(host.c_str(), port);
     if (!success) {
         std::cerr << "[ERROR] Failed to bind to " << host << ":" << port << std::endl;

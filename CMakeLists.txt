@@ -1,15 +1,1 @@
-cmake_minimum_required(VERSION 3.16)
-project(TypeX VERSION 1.0.0 LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Backend Server Executable
-add_executable(typex_server backend/main.cpp)
-target_include_directories(typex_server PRIVATE backend/include)
-
-if(WIN32)
-    target_link_libraries(typex_server PRIVATE ws2_32 iphlpapi)
-else()
-    target_link_libraries(typex_server PRIVATE pthread)
-endif()
+cmake_minimum_required(VERSION 3.16)\nproject(TypeX VERSION 1.0.0 LANGUAGES C CXX)\n\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n\n# Backend server (headless API + static frontend host). Desktop launching on\n# Windows is handled by the Electron shell in desktop/.\nadd_executable(typex_server\n    backend/main.cpp\n    backend/include/sqlite3.c\n)\ntarget_include_directories(typex_server PRIVATE backend/include)\n\nif(WIN32)\n    target_compile_definitions(typex_server PRIVATE _WIN32_WINNT=0x0A00)\n    target_link_libraries(typex_server PRIVATE ws2_32 iphlpapi advapi32 user32)\n    if(MSVC)\n        target_compile_options(typex_server PRIVATE /O2)\n    endif()\nelse()\n    target_link_libraries(typex_server PRIVATE pthread dl)\nendif()\n

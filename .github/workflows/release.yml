@@ -79,8 +79,8 @@ jobs:
             dist/*.tar.gz
 
   build-windows:
-    name: Build Windows (.exe & .zip)
-    runs-on: ubuntu-latest
+    name: Build Windows Desktop (.exe installer)
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -95,72 +95,66 @@ jobs:
         with:
           version: 9
 
-      - name: Install MinGW cross-compiler & NSIS
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mingw-w64 nsis zip
-
       - name: Determine version tag
         id: vars
+        shell: bash
         run: |
           if [ -n "${{ github.event.inputs.tag_name }}" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
+          VERSION="${TAG#v}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Compile Windows C++ Server (.exe) with SQLite
-        run: |
-          x86_64-w64-mingw32-gcc -O3 -pthread -c backend/include/sqlite3.c -o backend/sqlite3_win.o
-          x86_64-w64-mingw32-g++ -std=c++17 -O3 -pthread backend/main.cpp backend/sqlite3_win.o \
-            -Ibackend/include \
-            -D_WIN32_WINNT=0x0A00 \
-            -static -static-libgcc -static-libstdc++ \
-            -lws2_32 -liphlpapi -lshell32 -ladvapi32 -luser32 \
-            -mwindows \
-            -o backend/TypeX.exe
-          x86_64-w64-mingw32-strip --strip-unneeded backend/TypeX.exe
-
-      - name: Build frontend static distribution
+      - name: Install frontend dependencies
+        shell: bash
         run: |
           cd frontend
           pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build frontend static distribution
+        shell: bash
+        run: |
+          cd frontend
           pnpm exec next build
 
-      - name: Build Windows Standalone Installer (.exe)
+      - name: Build backend (CMake, Release)
+        shell: pwsh
         run: |
-          mkdir -p build/windows/dist_win
-          cp backend/TypeX.exe build/windows/dist_win/
-          cp assets/icons/typex.ico build/windows/dist_win/
-          mkdir -p build/windows/dist_win/data
-          cp backend/data/*.txt build/windows/dist_win/data/
-          if [ -f backend/data/WORDLISTS.md ]; then
-            cp backend/data/WORDLISTS.md build/windows/dist_win/data/
-          fi
-          if [ -d frontend/out ]; then
-            mkdir -p build/windows/dist_win/web
-            cp -r frontend/out/* build/windows/dist_win/web/
-          fi
-          
-          # Copy tracked NSIS installer script and license agreement
-          cp packaging/windows/installer.nsi build/windows/installer.nsi
-          cp packaging/windows/LICENSE.txt build/windows/LICENSE.txt
-          
-          # Build NSIS installer executable
-          cd build/windows
-          makensis -DPRODUCT_VERSION="${{ steps.vars.outputs.tag }}" -DOUTFILE="TypeX-${{ steps.vars.outputs.tag }}-Setup.exe" installer.nsi
-          mkdir -p ../../dist
-          cp TypeX-${{ steps.vars.outputs.tag }}-Setup.exe ../../dist/
-          cd ../..
-          ls -lh dist/TypeX-*-Setup.exe
+          cmake -S . -B build/backend -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/backend --config Release --parallel
+          $exe = Get-ChildItem -Path build/backend -Recurse -Filter "typex_server.exe" | Select-Object -First 1
+          if (-not $exe) { throw "typex_server.exe not found after build" }
+          New-Item -ItemType Directory -Force -Path desktop/backend/data | Out-Null
+          Copy-Item $exe.FullName desktop/backend/typex_server.exe -Force
+          Copy-Item backend/data/*.txt desktop/backend/data/ -Force
+          if (Test-Path backend/data/WORDLISTS.md) { Copy-Item backend/data/WORDLISTS.md desktop/backend/data/ -Force }
+          Get-ChildItem desktop/backend
+
+      - name: Install desktop dependencies
+        shell: bash
+        run: |
+          cd desktop
+          pnpm install
+
+      - name: Build Electron installer (NSIS, publish disabled)
+        shell: bash
+        env:
+          # Code signing runs only when secrets are provided; skipped silently otherwise.
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          cd desktop
+          pnpm exec electron-builder --win nsis --x64 --publish never -c.extraMetadata.version="${{ steps.vars.outputs.version }}"
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
           path: |
-            dist/TypeX-*-Setup.exe
+            desktop/dist-electron/TypeX-*-Setup.exe
 
   publish-release:
     name: Publish GitHub Release
