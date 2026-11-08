@@ -20,6 +20,12 @@ import { RotateCcw, MousePointerClick } from "lucide-react";
 import { LiveSparkline } from "./LiveSparkline";
 
 import { sampleClientWords } from "@/utils/monkeytypeWordlists";
+import {
+  DrillItem,
+  createInitialDrillQueue,
+  reinsertDrillWord,
+  findConfusableWords,
+} from "@/utils/drillScheduler";
 
 interface WordBatch {
   words: string[];
@@ -254,9 +260,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // ── Phase 2: Neural Lock-In Drill State ────────────────────────────────────
   const [inLockInDrill, setInLockInDrill] = useState<boolean>(false);
-  const [drillWords, setDrillWords] = useState<string[]>([]);
-  const [drillWordIndex, setDrillWordIndex] = useState<number>(0);
-  const [drillCleanCount, setDrillCleanCount] = useState<number>(0);
+  const [drillQueue, setDrillQueue] = useState<DrillItem[]>([]);
+  const drillQueueRef = useRef<DrillItem[]>([]);
+  const [drillTargetWords, setDrillTargetWords] = useState<string[]>([]);
+  const [drillCleanCounts, setDrillCleanCounts] = useState<Record<string, number>>({});
+  const drillCleanCountsRef = useRef<Record<string, number>>({});
+  const drillCandidatePoolRef = useRef<string[]>([]);
 
   const [activeTargetKey, setActiveTargetKey] = useState<string>(focusKey || "s");
   const [isPatternDrill, setIsPatternDrill] = useState<boolean>(false);
@@ -489,6 +498,36 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     finalizeTestRef.current = finalizeTest;
   }, [finalizeTest]);
 
+  // Start Interleaved Neural Lock-In Drill
+  const startLockInDrill = useCallback(() => {
+    const targetWords = Array.from(new Set(repairQueueRef.current));
+    if (targetWords.length === 0) {
+      finalizeLearnTest();
+      return;
+    }
+
+    const paddingNeeded = Math.max(3, 3 - targetWords.length);
+    const padding = findConfusableWords(targetWords, words, paddingNeeded);
+    const initialPadding = targetWords.length < 3 ? padding.slice(0, 3 - targetWords.length) : [];
+    const initialQueue = createInitialDrillQueue(targetWords, initialPadding);
+    const initialCleanCounts: Record<string, number> = {};
+    targetWords.forEach((w) => {
+      initialCleanCounts[w] = 0;
+    });
+
+    const candidatePool = [...targetWords, ...padding];
+    drillCandidatePoolRef.current = candidatePool;
+    drillCleanCountsRef.current = initialCleanCounts;
+    drillQueueRef.current = initialQueue;
+
+    setDrillTargetWords(targetWords);
+    setDrillCleanCounts(initialCleanCounts);
+    setDrillQueue(initialQueue);
+    setInLockInDrill(true);
+    currentInputRef.current = "";
+    setCurrentInput("");
+  }, [words, finalizeLearnTest]);
+
   // Reset arena
   const resetTest = useCallback(() => {
     isFinishedRef.current = false;
@@ -509,9 +548,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
     // Reset drill and learn telemetry
     setInLockInDrill(false);
-    setDrillWords([]);
-    setDrillWordIndex(0);
-    setDrillCleanCount(0);
+    setDrillQueue([]);
+    drillQueueRef.current = [];
+    setDrillTargetWords([]);
+    setDrillCleanCounts({});
+    drillCleanCountsRef.current = {};
+    drillCandidatePoolRef.current = [];
     repairQueueRef.current = [];
     repairedWordsSet.current.clear();
     missedWordsSet.current.clear();
@@ -761,7 +803,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   // Notify parent of next expected char & last typed char for live vector keyboard guidance
   useEffect(() => {
     if (inLockInDrill) {
-      const currentWord = drillWords[drillWordIndex] || "";
+      const currentWord = drillQueue[0]?.word || "";
       const nextChar = currentWord[currentInput.length] || " ";
       onNextCharChange?.(nextChar, lastTypedCharRef.current);
     } else if (words.length > 0 && currentWordIdx < words.length) {
@@ -769,7 +811,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       const nextChar = currentWord[currentInput.length] || " ";
       onNextCharChange?.(nextChar, lastTypedCharRef.current);
     }
-  }, [inLockInDrill, drillWords, drillWordIndex, words, currentWordIdx, currentInput, onNextCharChange]);
+  }, [inLockInDrill, drillQueue, words, currentWordIdx, currentInput, onNextCharChange]);
 
   // Window-level focus recovery & click-to-focus handler
   useEffect(() => {
@@ -825,42 +867,100 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         }
         return;
       }
-      if (e.key === " " || e.key === "Space" || e.key === "Enter") {
-        e.preventDefault();
-        const target = drillWords[drillWordIndex] || "";
-        const activeInput = currentInputRef.current;
-        if (activeInput === target) {
-          onWordComplete();
-          const nextClean = drillCleanCount + 1;
+
+      const currentItem = drillQueueRef.current[0];
+      if (!currentItem) {
+        finalizeLearnTest();
+        return;
+      }
+
+      const handleDrillSuccess = (item: DrillItem) => {
+        onWordComplete();
+        const word = item.word;
+
+        if (!item.isPadding) {
+          const currentClean = drillCleanCountsRef.current[word] || 0;
+          const nextClean = currentClean + 1;
+          const updatedCounts = { ...drillCleanCountsRef.current, [word]: nextClean };
+          drillCleanCountsRef.current = updatedCounts;
+          setDrillCleanCounts(updatedCounts);
+
           if (nextClean >= 3) {
-            repairedWordsSet.current.add(target);
-            if (drillWordIndex + 1 < drillWords.length) {
-              setDrillWordIndex((prev) => prev + 1);
-              setDrillCleanCount(0);
-              currentInputRef.current = "";
-              setCurrentInput("");
-            } else {
-              finalizeLearnTest();
-            }
+            repairedWordsSet.current.add(word);
+          }
+
+          const allDone = drillTargetWords.every((w) => (updatedCounts[w] || 0) >= 3);
+          if (allDone) {
+            finalizeLearnTest();
+            return;
+          }
+
+          if (nextClean < 3) {
+            const remaining = drillQueueRef.current.slice(1);
+            const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
+            drillQueueRef.current = nextQueue;
+            setDrillQueue(nextQueue);
           } else {
-            setDrillCleanCount(nextClean);
-            currentInputRef.current = "";
-            setCurrentInput("");
+            const nextQueue = drillQueueRef.current.slice(1);
+            drillQueueRef.current = nextQueue;
+            setDrillQueue(nextQueue);
           }
         } else {
-          setStopErrorFlash(true);
-          setTimeout(() => setStopErrorFlash(false), 200);
-          onKeyError();
-          setDrillCleanCount(0);
-          currentInputRef.current = "";
-          setCurrentInput("");
+          // Padding word completed cleanly
+          const remaining = drillQueueRef.current.slice(1);
+          const anyUnmastered = drillTargetWords.some((w) => (drillCleanCountsRef.current[w] || 0) < 3);
+          if (anyUnmastered) {
+            const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
+            drillQueueRef.current = nextQueue;
+            setDrillQueue(nextQueue);
+          } else {
+            drillQueueRef.current = remaining;
+            setDrillQueue(remaining);
+          }
+        }
+
+        currentInputRef.current = "";
+        setCurrentInput("");
+      };
+
+      const handleDrillMistake = (item: DrillItem) => {
+        setStopErrorFlash(true);
+        setTimeout(() => setStopErrorFlash(false), 200);
+        onKeyError();
+
+        const word = item.word;
+        if (!item.isPadding) {
+          const currentClean = drillCleanCountsRef.current[word] || 0;
+          const nextClean = Math.max(0, currentClean - 1);
+          const updatedCounts = { ...drillCleanCountsRef.current, [word]: nextClean };
+          drillCleanCountsRef.current = updatedCounts;
+          setDrillCleanCounts(updatedCounts);
+        }
+
+        const remaining = drillQueueRef.current.slice(1);
+        const nextQueue = reinsertDrillWord(remaining, item, 2, 3, drillCandidatePoolRef.current);
+        drillQueueRef.current = nextQueue;
+        setDrillQueue(nextQueue);
+
+        currentInputRef.current = "";
+        setCurrentInput("");
+      };
+
+      if (e.key === " " || e.key === "Space" || e.key === "Enter") {
+        e.preventDefault();
+        const activeInput = currentInputRef.current;
+        if (activeInput === currentItem.word) {
+          handleDrillSuccess(currentItem);
+        } else {
+          handleDrillMistake(currentItem);
         }
         return;
       }
+
       if (e.key.length === 1) {
         e.preventDefault();
         const char = e.key;
-        const target = drillWords[drillWordIndex] || "";
+        const target = currentItem.word;
         const activeInput = currentInputRef.current;
         const expectedChar = target[activeInput.length];
         lastTypedCharRef.current = char;
@@ -882,31 +982,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           currentInputRef.current = nextInput;
           setCurrentInput(nextInput);
           if (nextInput === target) {
-            onWordComplete();
-            const nextClean = drillCleanCount + 1;
-            if (nextClean >= 3) {
-              repairedWordsSet.current.add(target);
-              if (drillWordIndex + 1 < drillWords.length) {
-                setDrillWordIndex((prev) => prev + 1);
-                setDrillCleanCount(0);
-                currentInputRef.current = "";
-                setCurrentInput("");
-              } else {
-                finalizeLearnTest();
-              }
-            } else {
-              setDrillCleanCount(nextClean);
-              currentInputRef.current = "";
-              setCurrentInput("");
-            }
+            handleDrillSuccess(currentItem);
           }
         } else {
-          setStopErrorFlash(true);
-          setTimeout(() => setStopErrorFlash(false), 200);
-          onKeyError();
-          setDrillCleanCount(0);
-          currentInputRef.current = "";
-          setCurrentInput("");
+          handleDrillMistake(currentItem);
         }
         return;
       }
@@ -1048,7 +1127,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         });
         if (!isCorrect) {
           missedWordsSet.current.add(targetWord);
-          if (repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
+          if (!repairQueueRef.current.includes(targetWord)) {
             repairQueueRef.current.push(targetWord);
           }
         }
@@ -1087,12 +1166,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       if (mode === "learn" && nextWordIdx >= activeWords.length) {
         if (repairQueueRef.current.length > 0) {
-          setInLockInDrill(true);
-          setDrillWords([...repairQueueRef.current]);
-          setDrillWordIndex(0);
-          setDrillCleanCount(0);
-          currentInputRef.current = "";
-          setCurrentInput("");
+          startLockInDrill();
           return;
         } else {
           finalizeLearnTest();
@@ -1140,7 +1214,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           missedWordsSet.current.add(targetWord);
         }
         if (!isCharCorrect || (isTargetChar && flightMs > 450)) {
-          if (repairQueueRef.current.length < 3 && !repairQueueRef.current.includes(targetWord)) {
+          if (!repairQueueRef.current.includes(targetWord)) {
             repairQueueRef.current.push(targetWord);
           }
         }
@@ -1183,12 +1257,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             nextInput === targetWord
           ) {
             if (repairQueueRef.current.length > 0) {
-              setInLockInDrill(true);
-              setDrillWords([...repairQueueRef.current]);
-              setDrillWordIndex(0);
-              setDrillCleanCount(0);
-              currentInputRef.current = "";
-              setCurrentInput("");
+              startLockInDrill();
             } else {
               finalizeLearnTest();
             }
@@ -1238,12 +1307,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         nextInput === targetWord
       ) {
         if (repairQueueRef.current.length > 0) {
-          setInLockInDrill(true);
-          setDrillWords([...repairQueueRef.current]);
-          setDrillWordIndex(0);
-          setDrillCleanCount(0);
-          currentInputRef.current = "";
-          setCurrentInput("");
+          startLockInDrill();
         } else {
           finalizeLearnTest();
         }
@@ -1317,25 +1381,37 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         <div className="w-full flex flex-col items-center justify-center gap-2 mb-3 py-2.5 px-4 rounded-xl bg-white/[0.03] border border-[var(--accent-color)]/30 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="flex items-center gap-2 text-xs font-mono-custom tracking-wider text-[var(--accent-color)] font-semibold uppercase">
             <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-color)] animate-ping" />
-            <span>NEURAL LOCK-IN DRILL · TYPE EACH MISSED WORD 3X CLEAN TO CEMENT MUSCLE MEMORY</span>
+            <span>NEURAL LOCK-IN DRILL · INTERLEAVED ACTIVE RECALL · 3 CLEAN PASSES TO MASTER</span>
           </div>
           <div className="flex items-center gap-4 text-xs font-mono-custom text-[var(--inactive-color)]">
-            <span className="opacity-90 font-medium">Word {drillWordIndex + 1} of {drillWords.length}</span>
-            <div className="flex items-center gap-1.5">
-              {[0, 1, 2].map((pip) => (
-                <span
-                  key={pip}
-                  className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                    pip < drillCleanCount
-                      ? "bg-[var(--accent-color)] shadow-[0_0_8px_var(--accent-color)] scale-110"
-                      : "bg-white/15 border border-white/20"
-                  }`}
-                />
-              ))}
-              <span className="ml-1 text-[var(--typed-color)] opacity-95 font-mono-custom font-semibold">
-                [{drillCleanCount}/3 Clean]
+            <span className="opacity-90 font-medium">
+              Mastered {drillTargetWords.filter((w) => (drillCleanCounts[w] || 0) >= 3).length} of {drillTargetWords.length} words
+            </span>
+            {drillQueue[0]?.isPadding ? (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/10 text-[var(--inactive-color)] opacity-80 font-mono-custom">
+                Practice Buffer
               </span>
-            </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                {[0, 1, 2].map((pip) => {
+                  const currentWordText = drillQueue[0]?.word || "";
+                  const count = drillCleanCounts[currentWordText] || 0;
+                  return (
+                    <span
+                      key={pip}
+                      className={`inline-block w-2.5 h-2.5 rounded-full transition-all duration-200 ${
+                        pip < count
+                          ? "bg-[var(--accent-color)] shadow-[0_0_8px_var(--accent-color)] scale-110"
+                          : "bg-white/15 border border-white/20"
+                      }`}
+                    />
+                  );
+                })}
+                <span className="ml-1 text-[var(--typed-color)] opacity-95 font-mono-custom font-semibold">
+                  [{Math.min(3, drillCleanCounts[drillQueue[0]?.word || ""] || 0)}/3 Clean]
+                </span>
+              </div>
+            )}
             <button
               onClick={() => finalizeLearnTest()}
               className="ml-2 text-[11px] text-[var(--inactive-color)] opacity-70 hover:opacity-100 hover:text-[var(--accent-color)] transition-opacity underline cursor-pointer"
@@ -1392,7 +1468,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       {inLockInDrill ? (
         <div className="w-full h-[168px] flex flex-col items-center justify-center text-center arena-mask py-1 select-none">
           <div className="text-4xl sm:text-5xl font-mono-custom tracking-wider flex items-center justify-center gap-1 mb-3">
-            {(drillWords[drillWordIndex] || "").split("").map((targetChar, cIdx) => {
+            {(drillQueue[0]?.word || "").split("").map((targetChar, cIdx) => {
               let charColor = "var(--untyped-color)";
               let charOpacity: number | string = "var(--untyped-opacity)";
               let borderClass = "border-transparent";
@@ -1424,7 +1500,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             })}
           </div>
           <p className="text-xs font-mono-custom text-[var(--inactive-color)] opacity-70">
-            Type word cleanly 3 consecutive times to master.
+            Words are mixed. Type each missed word cleanly 3 times to master.
           </p>
         </div>
       ) : (
