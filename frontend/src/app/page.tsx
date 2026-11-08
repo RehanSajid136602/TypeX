@@ -28,6 +28,7 @@ import { Footer } from "@/components/Footer";
 import { authenticatedFetch } from "@/utils/apiSecurity";
 import { useSoundEngine } from "@/hooks/useSoundEngine";
 import { useProfile } from "@/context/ProfileContext";
+import { useSettings } from "@/context/SettingsContext";
 import { FirstRunModal } from "@/components/FirstRunModal";
 
 // ── Persisted dictionary tier ────────────────────────────────────────────────
@@ -124,7 +125,9 @@ async function requestMasteryStatus(signal?: AbortSignal): Promise<MasteryStatus
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<ThemeName>("obsidian");
+  const { settings, updateSetting } = useSettings();
+  const theme = settings.theme;
+  const handleThemeChange = (newTheme: ThemeName) => updateSetting("theme", newTheme);
   const [mode, setMode] = useState<TestMode>("time");
   const [timeOption, setTimeOption] = useState<TimeOption>(30);
   const [wordsOption, setWordsOption] = useState<WordsOption>(50);
@@ -265,6 +268,9 @@ export default function Home() {
             words: wordsOption,
             tier: tier,
             errorBehavior: errorBehavior,
+            stopOnError: settings.stopOnError,
+            caretStyle: settings.caretStyle,
+            smoothCaret: settings.smoothCaret,
             learnTrack: mode === "learn" ? learnTrack : undefined,
           }),
           durationMs: Math.round(results.durationSeconds * 1000),
@@ -359,7 +365,7 @@ export default function Home() {
       {/* Top Header */}
       <Header
         theme={theme}
-        onThemeChange={setTheme}
+        onThemeChange={handleThemeChange}
         isFocusMode={showFocusFade}
         soundEnabled={soundEnabled}
         onSoundToggle={toggleSound}

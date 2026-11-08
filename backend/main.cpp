@@ -1557,6 +1557,153 @@ int main(int argc, char** argv) {
         }
     });
 
+    // GET /api/accounts/settings — Load personal practice settings (raw SQL)
+    svr.Get("/api/accounts/settings", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        std::string raw = dbManager.getSetting("practice_settings", "{}");
+        json settingsJson = json::object();
+        try {
+            settingsJson = json::parse(raw);
+        } catch (...) {
+            settingsJson = json::object();
+        }
+        res.set_content(json({{"status", "ok"}, {"settings", settingsJson}}).dump(), "application/json");
+    });
+
+    // POST /api/accounts/settings — Persist personal practice settings (raw SQL)
+    svr.Post("/api/accounts/settings", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+            json settingsObj;
+            if (payload.contains("settings") && payload["settings"].is_object()) {
+                settingsObj = payload["settings"];
+            } else {
+                settingsObj = payload;
+            }
+            dbManager.setSetting("practice_settings", settingsObj.dump());
+            res.set_content(json({{"status", "ok"}, {"settings", settingsObj}}).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    // GET /api/accounts/backup/download — Download a full copy of the SQLite database
+    svr.Get("/api/accounts/backup/download", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        std::string backupPath;
+        if (!dbManager.createBackup(backupPath)) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Failed to create backup snapshot.\",\"success\":false}", "application/json");
+            return;
+        }
+        std::ifstream file(backupPath, std::ios::binary);
+        if (!file.is_open()) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Failed to open backup snapshot file.\",\"success\":false}", "application/json");
+            return;
+        }
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        res.set_header("Content-Disposition", "attachment; filename=\"typex-backup.db\"");
+        res.set_content(content, "application/octet-stream");
+    });
+
+    // POST /api/accounts/restore — Upload, validate SQLite header + integrity, auto-save safety copy, replace
+    svr.Post("/api/accounts/restore", [&dbManager, &masteryEngine, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        std::string fileContent;
+        if (req.form.has_file("file")) {
+            fileContent = req.form.get_file("file").content;
+        } else if (!req.body.empty()) {
+            fileContent = req.body;
+        }
+
+        if (fileContent.empty()) {
+            res.status = 400;
+            res.set_content("{\"error\":\"No file content received for restore.\",\"success\":false}", "application/json");
+            return;
+        }
+
+        // Write to temporary file for strict header and integrity inspection
+        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        std::string tempPath = "/tmp/typex_restore_" + std::to_string(nowMs) + ".db";
+        {
+            std::ofstream out(tempPath, std::ios::binary);
+            if (!out.is_open()) {
+                res.status = 500;
+                res.set_content("{\"error\":\"Failed to create temporary staging file for validation.\",\"success\":false}", "application/json");
+                return;
+            }
+            out.write(fileContent.data(), fileContent.size());
+        }
+
+        std::string safetyBackup;
+        std::string err;
+        bool ok = dbManager.restoreFromDatabaseFile(tempPath, safetyBackup, err);
+        std::error_code ec;
+        std::filesystem::remove(tempPath, ec);
+
+        if (!ok) {
+            res.status = 400;
+            res.set_content(json({{"error", err}, {"success", false}}).dump(), "application/json");
+            return;
+        }
+
+        // Re-load mastery profile for active profile if any
+        std::string activeIdStr = dbManager.getSetting("active_profile_id", "");
+        if (!activeIdStr.empty()) {
+            try {
+                int64_t activeId = std::stoll(activeIdStr);
+                json mp = dbManager.getMasteryProfile(activeId);
+                if (!mp.is_null()) {
+                    masteryEngine.loadFromJson(mp);
+                }
+            } catch (...) {}
+        }
+
+        res.set_content(json({
+            {"status", "ok"},
+            {"success", true},
+            {"safetyBackup", safetyBackup},
+            {"message", "Database restored successfully."}
+        }).dump(), "application/json");
+    });
+
+    // POST /api/accounts/reset — Reset all database data with 'RESET' confirmation and safety copy
+    svr.Post("/api/accounts/reset", [&dbManager, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        if (!validateAccountSecurity(req, res)) return;
+        try {
+            auto payload = json::parse(req.body);
+            std::string confirmation = payload.value("confirmation", "");
+            if (confirmation != "RESET") {
+                res.status = 400;
+                res.set_content("{\"error\":\"Confirmation must be exactly 'RESET'.\",\"success\":false}", "application/json");
+                return;
+            }
+
+            std::string safetyBackup;
+            std::string err;
+            bool ok = dbManager.resetAllDatabaseData(safetyBackup, err);
+            if (!ok) {
+                res.status = 500;
+                res.set_content(json({{"error", err}, {"success", false}}).dump(), "application/json");
+                return;
+            }
+
+            res.set_content(json({
+                {"status", "ok"},
+                {"success", true},
+                {"safetyBackup", safetyBackup},
+                {"message", "All data reset successfully."}
+            }).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
     // ── Competition Mode Endpoints ───────────────────────────────────────────
 
     // GET /api/competition/state (Poll state for admin, compete, projector)

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Volume2, VolumeX, User, ChevronDown, Plus, UserCheck, LogOut, BarChart3 } from "lucide-react";
+import { Volume2, VolumeX, User, ChevronDown, Plus, UserCheck, LogOut, BarChart3, Settings } from "lucide-react";
 import { ThemeName } from "@/types/typing";
 import { useProfile } from "@/context/ProfileContext";
 
@@ -104,6 +104,17 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-color)]" />
                 <span>Account & Analytics</span>
+              </Link>
+
+              {/* Settings Link */}
+              <Link
+                href="/settings"
+                onClick={() => setDropdownOpen(false)}
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-white/[0.06] text-[var(--typed-color)] font-medium transition-colors"
+                id="header-settings-dropdown-link"
+              >
+                <Settings className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                <span>Practice Settings</span>
               </Link>
 
               <div className="h-px bg-white/[0.08] my-1" />
@@ -235,6 +246,17 @@ export const Header: React.FC<HeaderProps> = ({
             <VolumeX className="w-3.5 h-3.5" />
           )}
         </button>
+
+        {/* Practice Settings Link */}
+        <div className="h-3 w-px bg-white/25" />
+        <Link
+          href="/settings"
+          title="Practice Settings"
+          className="transition-colors duration-150 cursor-pointer p-0.5 rounded text-[var(--inactive-color)] opacity-60 hover:opacity-100 hover:text-[var(--typed-color)]"
+          id="header-settings-link"
+        >
+          <Settings className="w-3.5 h-3.5" />
+        </Link>
       </div>
     </header>
   );

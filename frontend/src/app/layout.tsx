@@ -40,6 +40,7 @@ export const viewport: Viewport = {
 };
 
 import { ProfileProvider } from "@/context/ProfileContext";
+import { SettingsProvider } from "@/context/SettingsContext";
 
 export default function RootLayout({
   children,
@@ -50,7 +51,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${jetbrainsMono.variable} ${inter.variable}`}>
       <body className="theme-obsidian min-h-screen flex flex-col justify-between selection:bg-amber-500/20 selection:text-amber-200">
         <ProfileProvider>
-          {children}
+          <SettingsProvider>
+            {children}
+          </SettingsProvider>
         </ProfileProvider>
       </body>
     </html>

@@ -22,6 +22,8 @@ import { RotateCcw, MousePointerClick } from "lucide-react";
 import { LiveSparkline } from "./LiveSparkline";
 
 import { sampleClientWords } from "@/utils/monkeytypeWordlists";
+import { useSettings } from "@/context/SettingsContext";
+import { DEFAULT_PERSONAL_SETTINGS, StopOnError } from "@/types/typing";
 import {
   isGateAchieved,
   getNextCurriculumTarget,
@@ -291,6 +293,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   onWordComplete,
   onNextCharChange,
 }) => {
+  const { settings: personalSettings } = useSettings();
+  const settings = mode === "competition" ? DEFAULT_PERSONAL_SETTINGS : personalSettings;
+
+  const stopOnErrorRef = useRef<StopOnError>(settings.stopOnError);
+  useEffect(() => {
+    stopOnErrorRef.current = settings.stopOnError;
+  }, [settings.stopOnError]);
+
   const [words, setWords] = useState<string[]>([]);
   const [typedWords, setTypedWords] = useState<string[]>([""]);
   const [currentWordIdx, setCurrentWordIdx] = useState<number>(0);
@@ -329,10 +339,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const [isFocused, setIsFocused] = useState<boolean>(true);
 
   // Caret coordinates inside words-wrapper
-  const [caretPos, setCaretPos] = useState<{ x: number; y: number; height: number; visible: boolean }>({
+  const [caretPos, setCaretPos] = useState<{ x: number; y: number; height: number; width: number; visible: boolean }>({
     x: 0,
     y: 0,
     height: 32,
+    width: 14,
     visible: true,
   });
   const [isTyping, setIsTyping] = useState<boolean>(false);
@@ -523,8 +534,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         status: "active",
       };
     }
-    // Advance on first evaluation if already achieved
-    if (isGateAchieved(liveTargetStatRef.current) && !advancedTargetsRef.current.has(target)) {
+    // Advance on first evaluation if already achieved (blocked if stopOnError is letter)
+    if (stopOnErrorRef.current !== "letter" && isGateAchieved(liveTargetStatRef.current) && !advancedTargetsRef.current.has(target)) {
       triggerAutoAdvance(target);
     }
   }, [keyStatuses, activeTargetKey, mode, triggerAutoAdvance]);
@@ -648,6 +659,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       );
     }
     const gateSnapshot = frozenGateSnapshotRef.current;
+    if (stopOnErrorRef.current === "letter" && gateSnapshot) {
+      gateSnapshot.achieved = false;
+    }
 
     // Both drill pool and missed words list on results screen must be the same list
     const finalMissedWords = Array.from(new Set(missedWordsSet.current));
@@ -952,6 +966,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         x: charX,
         y: caretY,
         height: caretHeight,
+        width: targetCharRect.width || 14,
         visible: true,
       });
     } else {
@@ -960,15 +975,22 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       const wordHeight = wordRect.height;
       const caretHeight = Math.max(24, Math.round(wordHeight * 0.76));
       const caretY = wordY + Math.round((wordHeight - caretHeight) / 2);
+      const avgCharWidth = Math.round(wordRect.width / Math.max(1, (wordsRef.current[currentWordIdxRef.current] || "").length)) || 14;
 
       setCaretPos({
         x: wordRect.left - wrapperRect.left,
         y: caretY,
         height: caretHeight,
+        width: avgCharWidth,
         visible: true,
       });
     }
   }, [words, lineCount, measuredLineHeight]);
+
+  // Re-measure and update caret/scroll when font size changes with zero layout shift
+  useEffect(() => {
+    updateCaretAndScroll();
+  }, [settings.fontSize, updateCaretAndScroll]);
 
   useIsomorphicLayoutEffect(() => {
     updateCaretAndScroll();
@@ -1264,8 +1286,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       e.preventDefault();
       if (activeInput.length === 0) return;
 
-      // In stop mode, do not allow skipping unfinished or error words
-      if (errorBehavior === "stop" && activeInput !== targetWord) {
+      // In stop mode (word or letter) or if errorBehavior is stop, do not allow skipping unfinished or error words
+      const currentStopOnError = stopOnErrorRef.current;
+      const isWordBlocked =
+        (currentStopOnError === "word" || currentStopOnError === "letter" || errorBehavior === "stop") &&
+        activeInput !== targetWord;
+      if (isWordBlocked) {
         setStopErrorFlash(true);
         setTimeout(() => setStopErrorFlash(false), 200);
         incorrectKeystrokesCount.current += 1;
@@ -1408,58 +1434,27 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           }
           liveTargetStatRef.current = stat;
 
-          // Single source of truth gate check
-          if (isGateAchieved(stat) && !advancedTargetsRef.current.has(targetLetter)) {
+          // Single source of truth gate check (blocked if stopOnError is letter)
+          if (stopOnErrorRef.current !== "letter" && isGateAchieved(stat) && !advancedTargetsRef.current.has(targetLetter)) {
             triggerAutoAdvance(targetLetter);
           }
         }
       }
 
-      // Handle "Stop on Error" mode
-      if (errorBehavior === "stop") {
-        if (!isCharCorrect) {
-          setStopErrorFlash(true);
-          setTimeout(() => setStopErrorFlash(false), 200);
-          incorrectKeystrokesCount.current += 1;
-          const currentElapsed = startTimeRef.current
-            ? Math.floor((performance.now() - startTimeRef.current) / 1000)
-            : 0;
-          errorSeconds.current.add(currentElapsed + 1);
-          onKeyError();
-          return;
-        } else {
-          correctKeystrokesCount.current += 1;
-          onKeyClick();
-          const nextInput = activeInput + char;
-          currentInputRef.current = nextInput;
-          setCurrentInput(nextInput);
-
-          const nextExpected = targetWord[nextInput.length] || " ";
-          onNextCharChange?.(nextExpected, char);
-
-          if (
-            mode === "words" &&
-            activeWordIdx === wordsOption - 1 &&
-            nextInput === targetWord
-          ) {
-            finalizeTest();
-            return;
-          }
-
-          if (
-            mode === "learn" &&
-            activeWordIdx === activeWords.length - 1 &&
-            nextInput === targetWord
-          ) {
-            if (repairQueueRef.current.length > 0) {
-              startLockInDrill();
-            } else {
-              finalizeLearnTest();
-            }
-            return;
-          }
-          return;
-        }
+      // Handle "Stop on Error = letter" mode: reject incorrect keystrokes immediately
+      const currentStopOnError = stopOnErrorRef.current;
+      const isLetterBlocked =
+        (currentStopOnError === "letter" || errorBehavior === "stop") && !isCharCorrect;
+      if (isLetterBlocked) {
+        setStopErrorFlash(true);
+        setTimeout(() => setStopErrorFlash(false), 200);
+        incorrectKeystrokesCount.current += 1;
+        const currentElapsed = startTimeRef.current
+          ? Math.floor((performance.now() - startTimeRef.current) / 1000)
+          : 0;
+        errorSeconds.current.add(currentElapsed + 1);
+        onKeyError();
+        return;
       }
 
       // Free Flow & Strict mode
@@ -1753,8 +1748,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
             style={{
               transform: `translateY(${viewportTranslateY}px)`,
               transition: "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)",
+              fontSize: "var(--typing-font-size, 1.5rem)",
             }}
-            className={`w-full flex flex-wrap gap-x-4 gap-y-1 text-[clamp(1.5rem,2.2vw,2.1rem)] leading-[1.75] tracking-tight font-mono-custom relative ${
+            className={`w-full flex flex-wrap gap-x-4 gap-y-1 leading-[1.75] tracking-tight font-mono-custom relative ${
               !isFocused ? "opacity-30" : "opacity-100"
             } transition-opacity duration-300`}
           >
@@ -1763,14 +1759,29 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               <motion.div
                 animate={{
                   left: caretPos.x,
-                  top: caretPos.y,
-                  height: caretPos.height,
+                  top:
+                    settings.caretStyle === "underline"
+                      ? caretPos.y + caretPos.height - 3
+                      : caretPos.y,
+                  height:
+                    settings.caretStyle === "underline"
+                      ? 3
+                      : caretPos.height,
+                  width:
+                    settings.caretStyle === "line"
+                      ? 2.5
+                      : Math.max(12, caretPos.width || 14),
                 }}
-                transition={{
-                  left: { type: "spring", stiffness: 600, damping: 38, mass: 0.1 },
-                  top: { duration: 0.12, ease: "easeOut" },
-                  height: { duration: 0.05 },
-                }}
+                transition={
+                  settings.smoothCaret
+                    ? {
+                        left: { type: "spring", stiffness: 600, damping: 38, mass: 0.1 },
+                        top: { duration: 0.12, ease: "easeOut" },
+                        height: { duration: 0.05 },
+                        width: { duration: 0.05 },
+                      }
+                    : { duration: 0 }
+                }
                 style={
                   stopErrorFlash
                     ? {
@@ -1778,9 +1789,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                         backgroundColor: "#e06c75",
                         transition: "box-shadow 0.1s, background-color 0.1s",
                       }
-                    : caretGlowStyle
+                    : {
+                        ...caretGlowStyle,
+                        opacity:
+                          settings.caretStyle === "block"
+                            ? 0.45
+                            : (caretGlowStyle.opacity ?? 1),
+                      }
                 }
-                className={`absolute w-[2.5px] rounded-full z-20 pointer-events-none ${
+                className={`absolute z-20 pointer-events-none ${
+                  settings.caretStyle === "block" ? "rounded-xs" : "rounded-full"
+                } ${
                   stopErrorFlash
                     ? "bg-[#e06c75]"
                     : "bg-[var(--caret-color)]"

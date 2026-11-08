@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 // ---------------------------------------------------------------------------
 // TypeX Sound FX Engine — Pure Web Audio API, Zero Dependencies
+// Switch Profiles: Clicky | Thocky | Soft
+// Continuous Volume Slider: 0 - 100 (0 = Muted)
 // ---------------------------------------------------------------------------
+
+export type SwitchProfile = "clicky" | "thocky" | "soft";
 
 let sharedAudioCtx: AudioContext | null = null;
 let masterCompressor: DynamicsCompressorNode | null = null;
@@ -28,7 +32,8 @@ function getAudioNodes(): { ctx: AudioContext; destination: AudioNode } | null {
 
   if (!masterGain || !masterCompressor) {
     masterGain = sharedAudioCtx.createGain();
-    masterGain.gain.setValueAtTime(1.0, sharedAudioCtx.currentTime);
+    const vol = getVolumeSnapshot();
+    masterGain.gain.setValueAtTime(vol / 100, sharedAudioCtx.currentTime);
 
     masterCompressor = sharedAudioCtx.createDynamicsCompressor();
     masterCompressor.threshold.setValueAtTime(-6, sharedAudioCtx.currentTime);
@@ -45,284 +50,484 @@ function getAudioNodes(): { ctx: AudioContext; destination: AudioNode } | null {
 }
 
 // ---------------------------------------------------------------------------
-// Sound preference store.
-// Reading localStorage inside a useState initializer meant the server rendered
-// "muted / VolumeX" while the client rendered "enabled / Volume2", which is a
-// hydration mismatch React cannot patch up. As an external store read through
-// useSyncExternalStore, the server snapshot is a constant and React re-reads
-// the stored value after hydration instead of during it.
+// External Stores for Volume and Profile
 // ---------------------------------------------------------------------------
 
-const SOUND_STORAGE_KEY = "typex_sound";
+const VOLUME_STORAGE_KEY = "typex_volume";
+const PROFILE_STORAGE_KEY = "typex_sound_profile";
 
-// Mirrors the value when localStorage is unavailable (private mode, blocked storage).
-let soundMemoryFallback = true;
+let volumeMemoryFallback = 80;
+let profileMemoryFallback: SwitchProfile = "clicky";
 
 const soundListeners = new Set<() => void>();
 
 const subscribeSound = (onChange: () => void) => {
   soundListeners.add(onChange);
-  window.addEventListener("storage", onChange);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onChange);
+  }
   return () => {
     soundListeners.delete(onChange);
-    window.removeEventListener("storage", onChange);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onChange);
+    }
   };
 };
 
-const getSoundSnapshot = (): boolean => {
+export const getVolumeSnapshot = (): number => {
+  if (typeof window === "undefined") return 80;
   try {
-    const stored = localStorage.getItem(SOUND_STORAGE_KEY);
-    if (stored !== null) return stored !== "false";
+    const stored = localStorage.getItem(VOLUME_STORAGE_KEY);
+    if (stored !== null) {
+      const parsed = parseInt(stored, 10);
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) return parsed;
+    }
+    // Backward compatibility with typex_sound bool flag
+    const legacySound = localStorage.getItem("typex_sound");
+    if (legacySound === "false") return 0;
   } catch {
-    // fall through to the in-memory value
+    // fall through
   }
-  return soundMemoryFallback;
+  return volumeMemoryFallback;
 };
 
-// Server render and first client (hydration) render share this constant.
-const getSoundServerSnapshot = (): boolean => true;
-
-const setSoundPreference = (enabled: boolean) => {
-  soundMemoryFallback = enabled;
+export const getProfileSnapshot = (): SwitchProfile => {
+  if (typeof window === "undefined") return "clicky";
   try {
-    localStorage.setItem(SOUND_STORAGE_KEY, enabled ? "true" : "false");
+    const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (stored === "clicky" || stored === "thocky" || stored === "soft") {
+      return stored as SwitchProfile;
+    }
   } catch {
-    // non-fatal: the choice only lives in memory for this tab
+    // fall through
   }
-  soundListeners.forEach((listener) => listener());
+  return profileMemoryFallback;
+};
+
+const getVolumeServerSnapshot = (): number => 80;
+const getProfileServerSnapshot = (): SwitchProfile => "clicky";
+
+export const setSoundVolume = (vol: number) => {
+  const clamped = Math.max(0, Math.min(100, Math.round(vol)));
+  volumeMemoryFallback = clamped;
+  try {
+    localStorage.setItem(VOLUME_STORAGE_KEY, clamped.toString());
+    localStorage.setItem("typex_sound", clamped > 0 ? "true" : "false");
+  } catch {}
+
+  if (masterGain && sharedAudioCtx && sharedAudioCtx.state !== "closed") {
+    masterGain.gain.setValueAtTime(clamped / 100, sharedAudioCtx.currentTime);
+  }
+
+  soundListeners.forEach((l) => l());
+};
+
+export const setSwitchProfile = (profile: SwitchProfile) => {
+  profileMemoryFallback = profile;
+  try {
+    localStorage.setItem(PROFILE_STORAGE_KEY, profile);
+  } catch {}
+  soundListeners.forEach((l) => l());
 };
 
 export function useSoundEngine() {
-  const soundEnabled = useSyncExternalStore(
+  const volume = useSyncExternalStore(
     subscribeSound,
-    getSoundSnapshot,
-    getSoundServerSnapshot
+    getVolumeSnapshot,
+    getVolumeServerSnapshot
   );
 
-  const enabledRef = useRef(soundEnabled);
+  const switchProfile = useSyncExternalStore(
+    subscribeSound,
+    getProfileSnapshot,
+    getProfileServerSnapshot
+  );
+
+  const soundEnabled = volume > 0;
+  const volumeRef = useRef(volume);
+  const profileRef = useRef(switchProfile);
+
   useEffect(() => {
-    enabledRef.current = soundEnabled;
-  }, [soundEnabled]);
+    volumeRef.current = volume;
+    if (masterGain && sharedAudioCtx && sharedAudioCtx.state !== "closed") {
+      masterGain.gain.setValueAtTime(volume / 100, sharedAudioCtx.currentTime);
+    }
+  }, [volume]);
+
+  useEffect(() => {
+    profileRef.current = switchProfile;
+  }, [switchProfile]);
 
   const toggleSound = useCallback(() => {
-    setSoundPreference(!getSoundSnapshot());
+    if (volumeRef.current > 0) {
+      setSoundVolume(0);
+    } else {
+      setSoundVolume(80);
+    }
   }, []);
 
-
   // -------------------------------------------------------------------------
-  // playClick — tactile mechanical keypress sound
-  // Produces an authentic, punchy mechanical switch click with rich tactile
-  // leaf snap, housing clack, and deep bottom-out thock.
+  // playClick — parameter presets for Clicky / Thocky / Soft mechanical switches
   // -------------------------------------------------------------------------
-  const playClick = useCallback(() => {
-    if (!enabledRef.current) return;
+  const playClick = useCallback((profileOverride?: SwitchProfile) => {
+    const currentVol = volumeRef.current;
+    if (currentVol <= 0) return;
     const nodes = getAudioNodes();
     if (!nodes) return;
     const { ctx, destination } = nodes;
 
     const t = ctx.currentTime;
-    // Subtle acoustic pitch variation per stroke for organic physical switch feel
     const jitter = 1 + (Math.random() - 0.5) * 0.12;
+    const profile = profileOverride || profileRef.current;
 
-    // 1. Switch tactile leaf snap / transient pop (crisp mechanical click)
-    const oscClick = ctx.createOscillator();
-    const gainClick = ctx.createGain();
-    oscClick.type = "triangle";
-    oscClick.frequency.setValueAtTime(2600 * jitter, t);
-    oscClick.frequency.exponentialRampToValueAtTime(650, t + 0.02);
+    if (profile === "clicky") {
+      // 1. Crisp switch leaf snap
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(2600 * jitter, t);
+      oscClick.frequency.exponentialRampToValueAtTime(650, t + 0.02);
 
-    gainClick.gain.setValueAtTime(0.55, t);
-    gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.024);
+      gainClick.gain.setValueAtTime(0.55, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.024);
 
-    oscClick.connect(gainClick);
-    gainClick.connect(destination);
-    oscClick.start(t);
-    oscClick.stop(t + 0.026);
+      oscClick.connect(gainClick);
+      gainClick.connect(destination);
+      oscClick.start(t);
+      oscClick.stop(t + 0.026);
 
-    // 2. Keycap & switch housing tactile clack (mid-range body resonance)
-    const oscClack = ctx.createOscillator();
-    const gainClack = ctx.createGain();
-    oscClack.type = "triangle";
-    oscClack.frequency.setValueAtTime(780 * jitter, t);
-    oscClack.frequency.exponentialRampToValueAtTime(290, t + 0.035);
+      // 2. Housing clack
+      const oscClack = ctx.createOscillator();
+      const gainClack = ctx.createGain();
+      oscClack.type = "triangle";
+      oscClack.frequency.setValueAtTime(780 * jitter, t);
+      oscClack.frequency.exponentialRampToValueAtTime(290, t + 0.035);
 
-    gainClack.gain.setValueAtTime(0.45, t);
-    gainClack.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
+      gainClack.gain.setValueAtTime(0.45, t);
+      gainClack.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
 
-    oscClack.connect(gainClack);
-    gainClack.connect(destination);
-    oscClack.start(t);
-    oscClack.stop(t + 0.04);
+      oscClack.connect(gainClack);
+      gainClack.connect(destination);
+      oscClack.start(t);
+      oscClack.stop(t + 0.04);
 
-    // 3. Solid chassis bottom-out thock (deep acoustic presence)
-    const oscThock = ctx.createOscillator();
-    const gainThock = ctx.createGain();
-    oscThock.type = "sine";
-    oscThock.frequency.setValueAtTime(240 * jitter, t);
-    oscThock.frequency.exponentialRampToValueAtTime(95, t + 0.045);
+      // 3. Solid bottom-out thock
+      const oscThock = ctx.createOscillator();
+      const gainThock = ctx.createGain();
+      oscThock.type = "sine";
+      oscThock.frequency.setValueAtTime(240 * jitter, t);
+      oscThock.frequency.exponentialRampToValueAtTime(95, t + 0.045);
 
-    gainThock.gain.setValueAtTime(0.38, t);
-    gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      gainThock.gain.setValueAtTime(0.38, t);
+      gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
-    oscThock.connect(gainThock);
-    gainThock.connect(destination);
-    oscThock.start(t);
-    oscThock.stop(t + 0.052);
+      oscThock.connect(gainThock);
+      gainThock.connect(destination);
+      oscThock.start(t);
+      oscThock.stop(t + 0.052);
+    } else if (profile === "thocky") {
+      // 1. Muffled tactile transient
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(1200 * jitter, t);
+      oscClick.frequency.exponentialRampToValueAtTime(380, t + 0.018);
+
+      gainClick.gain.setValueAtTime(0.30, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+
+      oscClick.connect(gainClick);
+      gainClick.connect(destination);
+      oscClick.start(t);
+      oscClick.stop(t + 0.022);
+
+      // 2. Deep body resonance
+      const oscClack = ctx.createOscillator();
+      const gainClack = ctx.createGain();
+      oscClack.type = "sine";
+      oscClack.frequency.setValueAtTime(460 * jitter, t);
+      oscClack.frequency.exponentialRampToValueAtTime(180, t + 0.035);
+
+      gainClack.gain.setValueAtTime(0.55, t);
+      gainClack.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
+
+      oscClack.connect(gainClack);
+      gainClack.connect(destination);
+      oscClack.start(t);
+      oscClack.stop(t + 0.04);
+
+      // 3. Heavy lubricated bottom-out thock
+      const oscThock = ctx.createOscillator();
+      const gainThock = ctx.createGain();
+      oscThock.type = "sine";
+      oscThock.frequency.setValueAtTime(190 * jitter, t);
+      oscThock.frequency.exponentialRampToValueAtTime(70, t + 0.058);
+
+      gainThock.gain.setValueAtTime(0.65, t);
+      gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+
+      oscThock.connect(gainThock);
+      gainThock.connect(destination);
+      oscThock.start(t);
+      oscThock.stop(t + 0.065);
+    } else {
+      // profile === "soft" (Silent / dampened switch)
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(750, t);
+      filter.connect(destination);
+
+      // 1. Soft transient pop
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(600 * jitter, t);
+      oscClick.frequency.exponentialRampToValueAtTime(200, t + 0.025);
+
+      gainClick.gain.setValueAtTime(0.28, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
+
+      oscClick.connect(gainClick);
+      gainClick.connect(filter);
+      oscClick.start(t);
+      oscClick.stop(t + 0.03);
+
+      // 2. Muted bottom-out pad
+      const oscThock = ctx.createOscillator();
+      const gainThock = ctx.createGain();
+      oscThock.type = "sine";
+      oscThock.frequency.setValueAtTime(140 * jitter, t);
+      oscThock.frequency.exponentialRampToValueAtTime(55, t + 0.04);
+
+      gainThock.gain.setValueAtTime(0.25, t);
+      gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+
+      oscThock.connect(gainThock);
+      gainThock.connect(filter);
+      oscThock.start(t);
+      oscThock.stop(t + 0.048);
+    }
   }, []);
 
   // -------------------------------------------------------------------------
-  // playDelete — mechanical backspace / delete key sound
-  // Emulates a stabilized 2u keycap with a heavier, deeper hollow clack
-  // and distinct stabilizer snap.
+  // playSampleStroke — Audition keystroke when selecting a profile
+  // -------------------------------------------------------------------------
+  const playSampleStroke = useCallback((profile: SwitchProfile) => {
+    const nodes = getAudioNodes();
+    if (!nodes) return;
+    const { ctx, destination } = nodes;
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
+    const t = ctx.currentTime;
+    const currentVol = volumeRef.current;
+    // If volume is muted or 0, audition with gentle default gain so user hears the switch character
+    const effectiveGain = currentVol > 0 ? currentVol / 100 : 0.6;
+
+    const sampleGain = ctx.createGain();
+    sampleGain.gain.setValueAtTime(effectiveGain, t);
+    sampleGain.connect(destination);
+
+    // Call synthesis directly into sampleGain
+    if (profile === "clicky") {
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(2600, t);
+      oscClick.frequency.exponentialRampToValueAtTime(650, t + 0.02);
+      gainClick.gain.setValueAtTime(0.55, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.024);
+      oscClick.connect(gainClick);
+      gainClick.connect(sampleGain);
+      oscClick.start(t);
+      oscClick.stop(t + 0.026);
+
+      const oscClack = ctx.createOscillator();
+      const gainClack = ctx.createGain();
+      oscClack.type = "triangle";
+      oscClack.frequency.setValueAtTime(780, t);
+      oscClack.frequency.exponentialRampToValueAtTime(290, t + 0.035);
+      gainClack.gain.setValueAtTime(0.45, t);
+      gainClack.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
+      oscClack.connect(gainClack);
+      gainClack.connect(sampleGain);
+      oscClack.start(t);
+      oscClack.stop(t + 0.04);
+    } else if (profile === "thocky") {
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(1200, t);
+      oscClick.frequency.exponentialRampToValueAtTime(380, t + 0.018);
+      gainClick.gain.setValueAtTime(0.30, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+      oscClick.connect(gainClick);
+      gainClick.connect(sampleGain);
+      oscClick.start(t);
+      oscClick.stop(t + 0.022);
+
+      const oscThock = ctx.createOscillator();
+      const gainThock = ctx.createGain();
+      oscThock.type = "sine";
+      oscThock.frequency.setValueAtTime(190, t);
+      oscThock.frequency.exponentialRampToValueAtTime(70, t + 0.058);
+      gainThock.gain.setValueAtTime(0.65, t);
+      gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      oscThock.connect(gainThock);
+      gainThock.connect(sampleGain);
+      oscThock.start(t);
+      oscThock.stop(t + 0.065);
+    } else {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(750, t);
+      filter.connect(sampleGain);
+
+      const oscClick = ctx.createOscillator();
+      const gainClick = ctx.createGain();
+      oscClick.type = "triangle";
+      oscClick.frequency.setValueAtTime(600, t);
+      oscClick.frequency.exponentialRampToValueAtTime(200, t + 0.025);
+      gainClick.gain.setValueAtTime(0.28, t);
+      gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
+      oscClick.connect(gainClick);
+      gainClick.connect(filter);
+      oscClick.start(t);
+      oscClick.stop(t + 0.03);
+
+      const oscThock = ctx.createOscillator();
+      const gainThock = ctx.createGain();
+      oscThock.type = "sine";
+      oscThock.frequency.setValueAtTime(140, t);
+      oscThock.frequency.exponentialRampToValueAtTime(55, t + 0.04);
+      gainThock.gain.setValueAtTime(0.25, t);
+      gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+      oscThock.connect(gainThock);
+      gainThock.connect(filter);
+      oscThock.start(t);
+      oscThock.stop(t + 0.048);
+    }
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // playDelete — mechanical backspace
   // -------------------------------------------------------------------------
   const playDelete = useCallback(() => {
-    if (!enabledRef.current) return;
+    if (volumeRef.current <= 0) return;
     const nodes = getAudioNodes();
     if (!nodes) return;
     const { ctx, destination } = nodes;
 
     const t = ctx.currentTime;
-
-    // 1. Stabilizer wire tick / sharp mechanical transient
     const oscSnap = ctx.createOscillator();
     const gainSnap = ctx.createGain();
     oscSnap.type = "triangle";
     oscSnap.frequency.setValueAtTime(1900, t);
     oscSnap.frequency.exponentialRampToValueAtTime(420, t + 0.022);
-
     gainSnap.gain.setValueAtTime(0.55, t);
     gainSnap.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
-
     oscSnap.connect(gainSnap);
     gainSnap.connect(destination);
     oscSnap.start(t);
     oscSnap.stop(t + 0.028);
 
-    // 2. Heavy hollow keycap clack
     const oscBody = ctx.createOscillator();
     const gainBody = ctx.createGain();
     oscBody.type = "triangle";
     oscBody.frequency.setValueAtTime(540, t);
     oscBody.frequency.exponentialRampToValueAtTime(160, t + 0.045);
-
     gainBody.gain.setValueAtTime(0.50, t);
     gainBody.gain.exponentialRampToValueAtTime(0.001, t + 0.048);
-
     oscBody.connect(gainBody);
     gainBody.connect(destination);
     oscBody.start(t);
     oscBody.stop(t + 0.052);
-
-    // 3. Deeper chassis thud
-    const oscThud = ctx.createOscillator();
-    const gainThud = ctx.createGain();
-    oscThud.type = "sine";
-    oscThud.frequency.setValueAtTime(160, t);
-    oscThud.frequency.exponentialRampToValueAtTime(65, t + 0.06);
-
-    gainThud.gain.setValueAtTime(0.42, t);
-    gainThud.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
-
-    oscThud.connect(gainThud);
-    gainThud.connect(destination);
-    oscThud.start(t);
-    oscThud.stop(t + 0.07);
   }, []);
 
   // -------------------------------------------------------------------------
-  // playError — distinct audible discordant mechanical error keystroke
-  // Produces a punchy warning buzz + mechanical strike that cuts through clearly
+  // playError — distinct discordant warning strike
   // -------------------------------------------------------------------------
   const playError = useCallback(() => {
-    if (!enabledRef.current) return;
+    if (volumeRef.current <= 0) return;
     const nodes = getAudioNodes();
     if (!nodes) return;
     const { ctx, destination } = nodes;
 
     const t = ctx.currentTime;
 
-    // 1. Sharp mechanical strike transient
     const oscClick = ctx.createOscillator();
     const gainClick = ctx.createGain();
     oscClick.type = "triangle";
     oscClick.frequency.setValueAtTime(1500, t);
     oscClick.frequency.exponentialRampToValueAtTime(300, t + 0.03);
-
     gainClick.gain.setValueAtTime(0.48, t);
     gainClick.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
-
     oscClick.connect(gainClick);
     gainClick.connect(destination);
     oscClick.start(t);
     oscClick.stop(t + 0.038);
 
-    // 2. Dissonant dual-tone chord (minor 2nd interval: 185 Hz & 196 Hz)
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(850, t);
 
-    const oscDissonant1 = ctx.createOscillator();
-    const oscDissonant2 = ctx.createOscillator();
-    const gainDissonant = ctx.createGain();
+    const oscD1 = ctx.createOscillator();
+    const oscD2 = ctx.createOscillator();
+    const gainD = ctx.createGain();
 
-    oscDissonant1.type = "sawtooth";
-    oscDissonant1.frequency.setValueAtTime(185, t);
-    oscDissonant1.frequency.exponentialRampToValueAtTime(75, t + 0.11);
+    oscD1.type = "sawtooth";
+    oscD1.frequency.setValueAtTime(185, t);
+    oscD1.frequency.exponentialRampToValueAtTime(75, t + 0.11);
 
-    oscDissonant2.type = "sawtooth";
-    oscDissonant2.frequency.setValueAtTime(196, t);
-    oscDissonant2.frequency.exponentialRampToValueAtTime(80, t + 0.11);
+    oscD2.type = "sawtooth";
+    oscD2.frequency.setValueAtTime(196, t);
+    oscD2.frequency.exponentialRampToValueAtTime(80, t + 0.11);
 
-    gainDissonant.gain.setValueAtTime(0.46, t);
-    gainDissonant.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    gainD.gain.setValueAtTime(0.46, t);
+    gainD.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
-    oscDissonant1.connect(filter);
-    oscDissonant2.connect(filter);
-    filter.connect(gainDissonant);
-    gainDissonant.connect(destination);
+    oscD1.connect(filter);
+    oscD2.connect(filter);
+    filter.connect(gainD);
+    gainD.connect(destination);
 
-    oscDissonant1.start(t);
-    oscDissonant2.start(t);
-    oscDissonant1.stop(t + 0.13);
-    oscDissonant2.stop(t + 0.13);
+    oscD1.start(t);
+    oscD2.start(t);
+    oscD1.stop(t + 0.13);
+    oscD2.stop(t + 0.13);
   }, []);
 
   // -------------------------------------------------------------------------
-  // playWordComplete — affirmative chime & spacebar thock on word completion
+  // playWordComplete — affirmative chime on word completion
   // -------------------------------------------------------------------------
   const playWordComplete = useCallback(() => {
-    if (!enabledRef.current) return;
+    if (volumeRef.current <= 0) return;
     const nodes = getAudioNodes();
     if (!nodes) return;
     const { ctx, destination } = nodes;
 
     const t = ctx.currentTime;
 
-    // Spacebar thock
     const oscThock = ctx.createOscillator();
     const gainThock = ctx.createGain();
     oscThock.type = "sine";
     oscThock.frequency.setValueAtTime(170, t);
     oscThock.frequency.exponentialRampToValueAtTime(75, t + 0.045);
-
     gainThock.gain.setValueAtTime(0.38, t);
     gainThock.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-
     oscThock.connect(gainThock);
     gainThock.connect(destination);
     oscThock.start(t);
     oscThock.stop(t + 0.052);
 
-    // Harmonic affirmative chime
     const oscChime = ctx.createOscillator();
     const gainChime = ctx.createGain();
     oscChime.type = "sine";
     oscChime.frequency.setValueAtTime(880, t);
     oscChime.frequency.exponentialRampToValueAtTime(1320, t + 0.06);
-
     gainChime.gain.setValueAtTime(0.30, t);
     gainChime.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-
     oscChime.connect(gainChime);
     gainChime.connect(destination);
     oscChime.start(t);
@@ -331,8 +536,13 @@ export function useSoundEngine() {
 
   return {
     soundEnabled,
+    volume,
+    switchProfile,
+    setVolume: setSoundVolume,
+    setSwitchProfile,
     toggleSound,
     playClick,
+    playSampleStroke,
     playDelete,
     playError,
     playWordComplete,

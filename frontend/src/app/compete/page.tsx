@@ -44,6 +44,20 @@ interface StoredSession {
 }
 
 export default function CompetePage() {
+  // Competition mode isolation: always enforce defaults (Obsidian Gold, default font size, default colors)
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    body.classList.remove("theme-tokyo", "theme-nordic");
+    body.classList.add("theme-obsidian");
+    root.style.removeProperty("--correct-color");
+    body.style.removeProperty("--correct-color");
+    root.style.removeProperty("--caret-color");
+    body.style.removeProperty("--caret-color");
+    root.style.removeProperty("--typing-font-size");
+    body.style.removeProperty("--typing-font-size");
+  }, []);
+
   const [step, setStep] = useState<FlowStep>("register");
   const [state, setState] = useState<CompetitionState | null>(null);
 

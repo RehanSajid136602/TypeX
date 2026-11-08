@@ -30,6 +30,35 @@ export type ErrorBehavior = "free" | "stop" | "strict";
 
 export type ThemeName = "obsidian" | "tokyo" | "nordic";
 
+export type CaretStyle = "line" | "block" | "underline";
+export type StopOnError = "off" | "letter" | "word";
+export type FontSize = "S" | "M" | "L" | "XL";
+export type SwitchProfile = "clicky" | "thocky" | "soft";
+
+export interface PersonalSettings {
+  caretStyle: CaretStyle;
+  smoothCaret: boolean;
+  stopOnError: StopOnError;
+  correctColor: string; // "default" or hex like "#22c55e"
+  caretColor: string;   // "default" or hex like "#f59e0b"
+  theme: ThemeName;
+  fontSize: FontSize;
+  volume: number;       // 0 - 100
+  soundProfile: SwitchProfile;
+}
+
+export const DEFAULT_PERSONAL_SETTINGS: PersonalSettings = {
+  caretStyle: "line",
+  smoothCaret: true,
+  stopOnError: "off",
+  correctColor: "default",
+  caretColor: "default",
+  theme: "obsidian",
+  fontSize: "M",
+  volume: 80,
+  soundProfile: "clicky",
+};
+
 // Single source of truth for phonetic unlock curriculum progression
 export const CURRICULUM_KEY_ORDER = "enitrlsady chg mupb kvwf zxqj";
 export const CURRICULUM_KEY_SEQUENCE = [

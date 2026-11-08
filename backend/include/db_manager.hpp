@@ -62,6 +62,10 @@ public:
     // Create online backup keeping last 7 backups
     bool createBackup(std::string& outBackupPath) {
         std::lock_guard<std::mutex> lock(dbMutex_);
+        return createBackupInternal(outBackupPath);
+    }
+
+    bool createBackupInternal(std::string& outBackupPath) {
         if (!db_) return false;
 
         try {
@@ -117,6 +121,105 @@ public:
             std::cerr << "[ERROR] createBackup failed: " << e.what() << std::endl;
             return false;
         }
+    }
+
+    // Restore from uploaded database file with header check, integrity check, and safety backup
+    bool restoreFromDatabaseFile(const std::string& tempFilePath, std::string& safetyBackupPath, std::string& outError) {
+        // 1. Verify file exists and has minimum size
+        std::error_code ec;
+        auto sz = std::filesystem::file_size(tempFilePath, ec);
+        if (ec || sz < 100) {
+            outError = "Uploaded file is too small or inaccessible.";
+            return false;
+        }
+
+        // 2. Validate SQLite 3 magic header (first 16 bytes: "SQLite format 3\0")
+        std::ifstream file(tempFilePath, std::ios::binary);
+        if (!file.is_open()) {
+            outError = "Could not open uploaded file for validation.";
+            return false;
+        }
+        char header[16];
+        file.read(header, 16);
+        if (file.gcount() < 16 || std::memcmp(header, "SQLite format 3\000", 16) != 0) {
+            outError = "Invalid file: missing SQLite format 3 magic header.";
+            return false;
+        }
+        file.close();
+
+        // 3. Run SQLite integrity check
+        sqlite3* testDb = nullptr;
+        if (sqlite3_open_v2(tempFilePath.c_str(), &testDb, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            if (testDb) sqlite3_close(testDb);
+            outError = "Unable to open file with SQLite engine.";
+            return false;
+        }
+
+        sqlite3_stmt* stmt = nullptr;
+        bool integrityPassed = false;
+        if (sqlite3_prepare_v2(testDb, "PRAGMA integrity_check;", -1, &stmt, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                const char* msg = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                if (msg && std::string(msg) == "ok") {
+                    integrityPassed = true;
+                } else if (msg) {
+                    outError = std::string("Database integrity check failed: ") + msg;
+                }
+            }
+            sqlite3_finalize(stmt);
+        } else {
+            outError = "Failed to prepare PRAGMA integrity_check statement.";
+        }
+        sqlite3_close(testDb);
+
+        if (!integrityPassed) {
+            if (outError.empty()) outError = "Database integrity check failed.";
+            return false;
+        }
+
+        // 4. Save safety copy first, then replace
+        std::lock_guard<std::mutex> lock(dbMutex_);
+        if (!createBackupInternal(safetyBackupPath)) {
+            outError = "Failed to create safety backup prior to database restore.";
+            return false;
+        }
+
+        closeDatabaseInternal();
+
+        std::filesystem::copy_file(tempFilePath, dbPath_, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            outError = "Failed to replace database file: " + ec.message();
+            initDatabaseInternal();
+            return false;
+        }
+
+        // Clean up wal / shm files from previous db
+        std::filesystem::remove(dbPath_ + "-wal", ec);
+        std::filesystem::remove(dbPath_ + "-shm", ec);
+
+        initDatabaseInternal();
+        return true;
+    }
+
+    // Danger zone: Reset all database data after creating safety backup
+    bool resetAllDatabaseData(std::string& safetyBackupPath, std::string& outError) {
+        std::lock_guard<std::mutex> lock(dbMutex_);
+        if (!createBackupInternal(safetyBackupPath)) {
+            outError = "Failed to create safety backup prior to data reset.";
+            return false;
+        }
+
+        executeSqlInternal("BEGIN TRANSACTION;");
+        executeSqlInternal("DELETE FROM test_key_stats;");
+        executeSqlInternal("DELETE FROM test_confusions;");
+        executeSqlInternal("DELETE FROM test_word_errors;");
+        executeSqlInternal("DELETE FROM tests;");
+        executeSqlInternal("DELETE FROM mastery_profiles;");
+        executeSqlInternal("DELETE FROM profiles;");
+        executeSqlInternal("DELETE FROM settings;");
+        executeSqlInternal("COMMIT;");
+        executeSqlInternal("VACUUM;");
+        return true;
     }
 
     // Restore from newest good backup if database is corrupted

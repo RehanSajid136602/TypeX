@@ -21,6 +21,20 @@ const PAGE_SIZE = 7;
 const PAGE_CYCLE_SECONDS = 8;
 
 export default function LeaderboardProjectorPage() {
+  // Competition mode isolation: always enforce defaults (Obsidian Gold, default font size, default colors)
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    body.classList.remove("theme-tokyo", "theme-nordic");
+    body.classList.add("theme-obsidian");
+    root.style.removeProperty("--correct-color");
+    body.style.removeProperty("--correct-color");
+    root.style.removeProperty("--caret-color");
+    body.style.removeProperty("--caret-color");
+    root.style.removeProperty("--typing-font-size");
+    body.style.removeProperty("--typing-font-size");
+  }, []);
+
   const [state, setState] = useState<CompetitionState | null>(null);
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState<number>(0);
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
