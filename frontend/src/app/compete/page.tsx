@@ -1054,7 +1054,7 @@ export default function CompetePage() {
       <footer className="w-full max-w-5xl mx-auto flex items-center justify-between text-xs text-[var(--inactive-color)] border-t border-white/[0.06] pt-4 mt-auto">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Stage Ready • Port 8080 C++ Engine</span>
+          <span>Stage Ready • Native C++ Engine</span>
         </div>
         <div>
           <span>Competition Rule: Fixed 60s from first keystroke</span>
