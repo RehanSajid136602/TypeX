@@ -3,13 +3,52 @@
 import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Trophy, Sparkles, AlertTriangle } from "lucide-react";
-import { MasteryDeltaReport, FingerStat } from "@/types/typing";
+import { MasteryDeltaReport, FingerStat, MIN_TARGET_ATTEMPTS } from "@/types/typing";
 
 interface MasteryDeltaViewProps {
   delta: MasteryDeltaReport;
   fingerStats?: Record<string, FingerStat>;
   onContinue: () => void;
 }
+
+// Human-readable finger labels used by the SFB rows (e.g. "L middle").
+const FINGER_LABELS: Record<string, string> = {
+  L_PINKY: "L pinky",
+  L_RING: "L ring",
+  L_MIDDLE: "L middle",
+  L_INDEX: "L index",
+  R_INDEX: "R index",
+  R_MIDDLE: "R middle",
+  R_RING: "R ring",
+  R_PINKY: "R pinky",
+};
+
+// Characters grouped by the finger that strikes them. Mirrors the engine's
+// biomechanical map so a same-finger bigram can be named by its finger.
+const KEY_FINGERS: [string, string][] = [
+  ["`~1!qaz", "L_PINKY"],
+  ["2@wsx", "L_RING"],
+  ["3#edc", "L_MIDDLE"],
+  ["4$5%rtfgvb", "L_INDEX"],
+  ["6^7&yuhjnm", "R_INDEX"],
+  ["8*ik,<", "R_MIDDLE"],
+  ["9(ol.>", "R_RING"],
+  ["0)-_=+p[]{};:'\"/?\\|", "R_PINKY"],
+];
+
+const CHAR_FINGERS: Record<string, string> = {};
+for (const [chars, finger] of KEY_FINGERS) {
+  for (const ch of chars) CHAR_FINGERS[ch] = finger;
+}
+
+const describeBigram = (bigram: string): string => {
+  if (bigram.length >= 2 && bigram[0].toLowerCase() === bigram[1].toLowerCase()) {
+    return "same key";
+  }
+  const finger =
+    CHAR_FINGERS[bigram[0]?.toLowerCase()] ?? CHAR_FINGERS[bigram[1]?.toLowerCase()];
+  return finger ? FINGER_LABELS[finger] : "—";
+};
 
 export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
   delta,
@@ -28,6 +67,12 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onContinue]);
 
+  // The gate is met at the target speed; never show more strokes than the
+  // minimum the gate requires.
+  const gateAchieved = delta.passedGate === true;
+  const targetStrokes = Math.min(MIN_TARGET_ATTEMPTS, delta.targetAttempts ?? 0);
+  const gatePercent = Math.min(100, Math.round(delta.newConfidence));
+
   const fingerOrder = [
     { id: "L_PINKY", label: "L-PK", hand: "L" },
     { id: "L_RING", label: "L-RG", hand: "L" },
@@ -38,6 +83,24 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
     { id: "R_RING", label: "R-RG", hand: "R" },
     { id: "R_PINKY", label: "R-PK", hand: "R" },
   ];
+
+  // A finger only has data once it has actually struck a key; the engine
+  // pre-seeds every finger with a placeholder latency, so keystrokes decide.
+  const fingerRows = fingerOrder.map((f) => {
+    const stat = fingerStats[f.id];
+    return {
+      ...f,
+      hasData: (stat?.keystrokes ?? 0) > 0,
+      avgMs: stat?.avgMs ?? 0,
+    };
+  });
+  const maxAvgMs = fingerRows.reduce(
+    (max, f) => (f.hasData ? Math.max(max, f.avgMs) : max),
+    0
+  );
+  const weakestWithData =
+    delta.weakestFinger !== undefined &&
+    (fingerStats[delta.weakestFinger.finger]?.keystrokes ?? 0) > 0;
 
   return (
     <motion.div
@@ -76,7 +139,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
             <span>
               Target gate requires 35 WPM target speed with &ge; 95.0% accuracy (achieved:{" "}
               <strong className="text-white font-bold">{delta.targetAccuracy ?? 0}%</strong> across{" "}
-              <strong className="text-white font-bold">{delta.targetAttempts ?? 0}</strong>/20 strokes). Keep practicing to unlock next key!
+              <strong className="text-white font-bold">{targetStrokes}</strong>/{MIN_TARGET_ATTEMPTS} strokes). Keep practicing to unlock next key!
             </span>
           </div>
         </div>
@@ -95,8 +158,12 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
 
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <div className="flex items-baseline gap-3">
-            <span className="text-4xl md:text-5xl font-light text-[var(--accent-color)] tabular-nums">
-              {Math.min(100, Math.round(delta.newConfidence))}%
+            <span
+              className={`text-4xl md:text-5xl font-light tabular-nums ${
+                gateAchieved ? "text-emerald-400" : "text-[var(--accent-color)]"
+              }`}
+            >
+              {gatePercent}%
             </span>
             <span
               className={`text-sm font-medium ${
@@ -110,7 +177,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           </div>
 
           <div className="text-xs text-[var(--inactive-color)] opacity-75">
-            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAttempts ?? 0} / 20</span>
+            Target Keystrokes: <span className="tabular-nums font-medium text-[var(--typed-color)]">{targetStrokes} / {MIN_TARGET_ATTEMPTS}</span>
             {delta.targetAccuracy !== undefined && (
               <span className="ml-3">Accuracy: <span className="tabular-nums font-medium text-[var(--typed-color)]">{delta.targetAccuracy}%</span></span>
             )}
@@ -124,7 +191,11 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
               initial={{ width: `${Math.min(100, delta.previousConfidence)}%` }}
               animate={{ width: `${Math.min(100, delta.newConfidence)}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="h-full rounded-full bg-gradient-to-r from-[var(--accent-secondary)] to-[var(--accent-color)] shadow-[0_0_8px_var(--accent-glow)]"
+              className={`h-full rounded-full ${
+                gateAchieved
+                  ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]"
+                  : "bg-gradient-to-r from-[var(--accent-secondary)] to-[var(--accent-color)] shadow-[0_0_8px_var(--accent-glow)]"
+              }`}
             />
           </div>
           {/* 100% Threshold Line */}
@@ -142,21 +213,24 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           <span className="text-[var(--inactive-color)] opacity-80 uppercase tracking-wider text-[11px]">
             8-Finger Latency Telemetry
           </span>
-          {delta.weakestFinger && (
+          {weakestWithData && delta.weakestFinger && (
             <span className="flex items-center gap-1.5 text-[11px] text-[#e06c75] opacity-90">
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Weakest: {delta.weakestFinger.finger} ({delta.weakestFinger.avgMs}ms)</span>
+              <span>
+                Weakest: {FINGER_LABELS[delta.weakestFinger.finger] ?? delta.weakestFinger.finger} (
+                {delta.weakestFinger.avgMs}ms)
+              </span>
             </span>
           )}
         </div>
 
         <div className="grid grid-cols-8 gap-2 pt-2">
-          {fingerOrder.map((f, idx) => {
-            const stat = fingerStats[f.id];
-            const avgMs = stat ? stat.avgMs : delta.weakestFinger?.finger === f.id ? delta.weakestFinger.avgMs : 185;
-            const isWeakest = delta.weakestFinger?.finger === f.id;
-            // Height ratio: 100ms -> 30%, 250ms -> 100%
-            const heightPercent = Math.min(100, Math.max(25, ((avgMs - 80) / 180) * 100));
+          {fingerRows.map((f, idx) => {
+            const isWeakest = f.hasData && delta.weakestFinger?.finger === f.id;
+            // Bar height is purely proportional to measured latency: the slowest
+            // finger fills the strip, every other finger scales against it.
+            const heightPercent =
+              f.hasData && maxAvgMs > 0 ? (f.avgMs / maxAvgMs) * 100 : 0;
 
             return (
               <div
@@ -175,14 +249,14 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
                     className={`w-3 rounded-t-sm transition-all duration-500 ${
                       isWeakest
                         ? "bg-[#e06c75]"
-                        : avgMs < 140
+                        : f.avgMs < 140
                         ? "bg-[var(--accent-color)]"
                         : "bg-slate-400 opacity-60"
                     }`}
                   />
                 </div>
                 <span className="text-[10px] text-[var(--typed-color)] font-medium tabular-nums">
-                  {Math.round(avgMs)}ms
+                  {f.hasData ? `${Math.round(f.avgMs)}ms` : "—"}
                 </span>
                 <span className="text-[9px] text-[var(--inactive-color)] opacity-70 uppercase">
                   {f.label}
@@ -239,7 +313,9 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-[var(--typed-color)]">{item.bigram}</span>
-                    <span className="text-[10px] text-[var(--inactive-color)] opacity-50">jump</span>
+                    <span className="text-[10px] text-[var(--inactive-color)] opacity-50">
+                      {describeBigram(item.bigram)}
+                    </span>
                   </div>
                   <span className="text-xs text-[var(--accent-color)] font-medium tabular-nums">
                     {Math.round(item.avgMs)}ms
