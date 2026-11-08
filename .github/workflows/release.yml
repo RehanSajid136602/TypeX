@@ -1,22 +1,68 @@
 name: Release
 
+# Tag push (v*.*.*) -> build both installers and publish a GitHub Release.
+# Manual run -> build both installers, upload them as workflow artifacts only.
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Release Tag (e.g. v0.3.1)'
-        required: false
+      tag:
+        description: 'Semver tag to build (e.g. v1.2.0 or v1.2.0-beta.1). Manual runs never publish a release.'
+        required: true
         default: 'v0.3.1'
 
 permissions:
-  contents: write
+  contents: read
+
+# Two runs for the same tag must never overlap.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  # Fail fast on tags that are not valid semver and expose the version everywhere.
+  prepare:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.semver.outputs.tag }}
+      version: ${{ steps.semver.outputs.version }}
+      prerelease: ${{ steps.semver.outputs.prerelease }}
+    steps:
+      - name: Resolve and validate semver tag
+        id: semver
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_TAG}" ]; then TAG="${INPUT_TAG}"; else TAG="${REF_NAME}"; fi
+
+          if ! printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.]+)?(\+[0-9A-Za-z.]+)?$'; then
+            echo "::error::Tag '${TAG}' is not a valid semver tag. Expected v<major>.<minor>.<patch>, optionally with a -prerelease suffix (e.g. v1.2.0 or v1.2.0-beta.1)."
+            exit 1
+          fi
+
+          # Build metadata (+...) is valid semver but is dropped from file names.
+          VERSION="${TAG#v}"
+          VERSION="${VERSION%%+*}"
+
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+
+          {
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "prerelease=${PRERELEASE}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building TypeX ${VERSION} (tag ${TAG}, prerelease ${PRERELEASE})"
+
   build-linux:
-    name: Build Linux (.deb & .tar.gz)
+    name: Build Linux (.deb)
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,7 +74,8 @@ jobs:
           node-version: 20
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        # pnpm/action-setup v4 (pinned to a full commit SHA)
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 9
 
@@ -37,49 +84,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential dpkg-dev
 
-      - name: Determine version tag
-        id: vars
-        run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            TAG="${{ github.event.inputs.tag_name }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          VERSION="${TAG#v}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
       - name: Install frontend dependencies
         run: |
           cd frontend
-          pnpm install --frozen-lockfile || pnpm install
+          pnpm install --frozen-lockfile
 
       - name: Package Debian (.deb)
+        # scripts/build_deb.sh writes the version into the control file and emits
+        # typex_<version>_amd64.deb.
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           chmod +x scripts/build_deb.sh
-          ./scripts/build_deb.sh "${{ steps.vars.outputs.version }}"
+          ./scripts/build_deb.sh "$VERSION"
 
-      - name: Package Tarball (.tar.gz)
-        run: |
-          mkdir -p dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64
-          cp backend/typex_server dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/
-          cp -r backend/data dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/
-          if [ -d frontend/out ]; then
-            cp -r frontend/out dist/typex-${{ steps.vars.outputs.tag }}-linux-x86_64/web
-          fi
-          cd dist
-          tar -czf typex-${{ steps.vars.outputs.tag }}-linux-x86_64.tar.gz typex-${{ steps.vars.outputs.tag }}-linux-x86_64
-
-      - name: Upload Linux Artifacts
+      - name: Upload .deb
         uses: actions/upload-artifact@v4
         with:
-          name: linux-artifacts
-          path: |
-            dist/*.deb
-            dist/*.tar.gz
+          name: linux-deb
+          path: dist/typex_${{ needs.prepare.outputs.version }}_amd64.deb
+          if-no-files-found: error
 
   build-windows:
-    name: Build Windows Desktop (.exe installer)
+    name: Build Windows (.exe installer)
+    needs: prepare
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -91,28 +119,16 @@ jobs:
           node-version: 20
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        # pnpm/action-setup v4 (pinned to a full commit SHA)
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 9
-
-      - name: Determine version tag
-        id: vars
-        shell: bash
-        run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            TAG="${{ github.event.inputs.tag_name }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          VERSION="${TAG#v}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Install frontend dependencies
         shell: bash
         run: |
           cd frontend
-          pnpm install --frozen-lockfile || pnpm install
+          pnpm install --frozen-lockfile
 
       - name: Build frontend static distribution
         shell: bash
@@ -133,6 +149,16 @@ jobs:
           if (Test-Path backend/data/WORDLISTS.md) { Copy-Item backend/data/WORDLISTS.md desktop/backend/data/ -Force }
           Get-ChildItem desktop/backend
 
+      - name: Stamp installer version from tag
+        # Never committed: this only mutates the checked-out working tree.
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cd desktop
+          pnpm pkg set version="$VERSION"
+          pnpm pkg get version
+
       - name: Install desktop dependencies
         shell: bash
         run: |
@@ -147,48 +173,59 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: |
           cd desktop
-          pnpm exec electron-builder --win nsis --x64 --publish never -c.extraMetadata.version="${{ steps.vars.outputs.version }}"
+          pnpm exec electron-builder --win nsis --x64 --publish never \
+            -c.artifactName='TypeX-Setup-${version}-x64.${ext}'
 
-      - name: Upload Windows Artifacts
+      - name: Upload .exe installer
         uses: actions/upload-artifact@v4
         with:
-          name: windows-artifacts
-          path: |
-            desktop/dist-electron/TypeX-*-Setup.exe
+          name: windows-exe
+          path: desktop/dist-electron/TypeX-Setup-${{ needs.prepare.outputs.version }}-x64.exe
+          if-no-files-found: error
 
-  publish-release:
+  release:
     name: Publish GitHub Release
-    needs: [build-linux, build-windows]
+    needs: [prepare, build-linux, build-windows]
+    # Tag pushes only; manual runs stop after the artifact uploads.
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Download all built artifacts
+      - name: Download installers
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
-      - name: Inspect release assets
+      - name: Generate SHA256SUMS.txt
         run: |
-          ls -lh release-assets/
+          set -euo pipefail
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          ls -l
+          cat SHA256SUMS.txt
 
-      - name: Determine release tag
-        id: vars
-        run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            TAG="${{ github.event.inputs.tag_name }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: "TypeX ${{ steps.vars.outputs.tag }}"
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: release-assets/*
+      - name: Refuse to overwrite an existing release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A GitHub Release for '$TAG' already exists. Delete it first or publish a new version tag — this workflow will not overwrite it."
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          args=(--title "TypeX $TAG" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" release-assets/* "${args[@]}"
