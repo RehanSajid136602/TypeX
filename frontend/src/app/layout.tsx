@@ -14,22 +14,35 @@ const inter = Inter({
   display: "swap",
 });
 
+// The packaged desktop app is served from a random loopback port, so the build
+// must never bake an origin into the HTML. Next falls back to
+// http://localhost:3000 for relative open-graph images, therefore the social
+// image tags are only emitted when a real public origin is provided at build
+// time (NEXT_PUBLIC_APP_URL). Everything else uses same-origin relative paths.
+const publicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+const socialImage = {
+  url: "/typex-logo.jpg",
+  width: 1024,
+  height: 1024,
+  alt: "TypeX Kinetic Keycap Logo",
+};
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  ...(publicAppUrl ? { metadataBase: new URL(publicAppUrl) } : {}),
   title: "TypeX — Minimalist High-Performance Typing Engine",
   description: "An ultra-minimalist, 120fps fluid typing benchmark powered by a native C++17 telemetry engine.",
   keywords: ["typing test", "wpm test", "monkeytype", "minimalist typing", "TypeX"],
   openGraph: {
     title: "TypeX — High-Performance Typing Engine",
     description: "An ultra-minimalist, 120fps fluid typing benchmark powered by a native C++17 telemetry engine.",
-    images: [{ url: "/typex-logo.jpg", width: 1024, height: 1024, alt: "TypeX Kinetic Keycap Logo" }],
     type: "website",
+    ...(publicAppUrl ? { images: [socialImage] } : {}),
   },
   twitter: {
     card: "summary_large_image",
     title: "TypeX — Minimalist Typing Engine",
     description: "An ultra-minimalist, 120fps fluid typing benchmark powered by a native C++17 telemetry engine.",
-    images: ["/typex-logo.jpg"],
+    ...(publicAppUrl ? { images: [socialImage.url] } : {}),
   },
   icons: {
     icon: "/favicon.ico",
