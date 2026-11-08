@@ -13,7 +13,9 @@ add_executable(typex_server
 target_include_directories(typex_server PRIVATE backend/include)
 
 if(WIN32)
-    target_compile_definitions(typex_server PRIVATE _WIN32_WINNT=0x0A00)
+    # NOMINMAX stops <windows.h> from defining min/max as macros, which would
+    # otherwise break every std::min/std::max call in the backend headers.
+    target_compile_definitions(typex_server PRIVATE _WIN32_WINNT=0x0A00 NOMINMAX)
     target_link_libraries(typex_server PRIVATE ws2_32 iphlpapi advapi32 user32)
     if(MSVC)
         target_compile_options(typex_server PRIVATE /O2)
