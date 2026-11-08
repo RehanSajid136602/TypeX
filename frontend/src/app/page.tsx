@@ -163,7 +163,7 @@ export default function Home() {
   const mouseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sound engine
-  const { soundEnabled, toggleSound, playClick, playError, playWordComplete } = useSoundEngine();
+  const { soundEnabled, toggleSound, playClick, playDelete, playError, playWordComplete } = useSoundEngine();
 
   // Apply theme class to document body
   useEffect(() => {
@@ -438,6 +438,7 @@ export default function Home() {
                 isFocusMode={showFocusFade}
                 setIsFocusMode={setIsFocusMode}
                 onKeyClick={playClick}
+                onKeyDelete={playDelete}
                 onKeyError={playError}
                 onWordComplete={playWordComplete}
                 onNextCharChange={(nc, pc) => {

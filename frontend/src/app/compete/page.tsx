@@ -48,7 +48,7 @@ export default function CompetePage() {
   const [state, setState] = useState<CompetitionState | null>(null);
 
   // Sound Engine
-  const { soundEnabled, toggleSound, playClick, playError, playWordComplete } = useSoundEngine();
+  const { soundEnabled, toggleSound, playClick, playDelete, playError, playWordComplete } = useSoundEngine();
 
   // Registration Form state
   const [fullName, setFullName] = useState("");
@@ -342,7 +342,7 @@ export default function CompetePage() {
         }
       }
       keystrokesLogRef.current.push({ key: "Backspace", time: Date.now() });
-      playClick();
+      playDelete();
     } else if (e.key.length === 1) {
       totalKeystrokesRef.current++;
       keystrokesLogRef.current.push({ key: e.key, time: Date.now() });
@@ -989,7 +989,7 @@ export default function CompetePage() {
                   <span
                     className={
                       isCorrect
-                        ? "text-[var(--typed)] font-medium"
+                        ? "text-[var(--correct-color,#22c55e)] font-medium"
                         : isError
                         ? "text-rose-400 bg-rose-500/20 rounded px-0.5"
                         : "text-[var(--untyped)] opacity-40"

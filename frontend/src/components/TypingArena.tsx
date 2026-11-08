@@ -151,7 +151,7 @@ export const WordElement = React.memo<WordElementProps>(
             const typedChar = typedVal[cIdx];
             if (typedChar === targetChar) {
               charStyle = {
-                color: "var(--typed-color)",
+                color: "var(--correct-color, #22c55e)",
                 opacity: 1.0,
               };
               borderClass = "border-transparent";
@@ -222,6 +222,7 @@ interface TypingArenaProps {
   setIsFocusMode: (val: boolean) => void;
   // Sound FX callbacks
   onKeyClick: () => void;
+  onKeyDelete?: () => void;
   onKeyError: () => void;
   onWordComplete: () => void;
   onNextCharChange?: (nextChar: string, prevChar: string) => void;
@@ -241,6 +242,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   onActivity,
   setIsFocusMode,
   onKeyClick,
+  onKeyDelete,
   onKeyError,
   onWordComplete,
   onNextCharChange,
@@ -292,6 +294,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // Viewport scroll translateY for 3-line centered view
   const [viewportTranslateY, setViewportTranslateY] = useState<number>(0);
+  const [measuredLineHeight, setMeasuredLineHeight] = useState<number>(56);
 
   // ── Phase 5: Live WPM Sparkline ───────────────────────────────────────────
   const [liveWpmWindow, setLiveWpmWindow] = useState<number[]>([]);
@@ -644,52 +647,94 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
     if (!currentWordEl) return;
 
-    // Detect line index and center active line on line 2 (or top line for 1)
-    const wordOffsetTop = currentWordEl.offsetTop;
-    const lineHeight = currentWordEl.offsetHeight || 56;
-    const lineIndex = Math.round(wordOffsetTop / lineHeight);
+    const wrapperEl = wordsWrapperRef.current;
+    const wrapperRect = wrapperEl.getBoundingClientRect();
 
-    // Current word anchored on line 2 (index 1). When finishing line 1 (index 0), scroll smoothly
-    if (lineIndex > 1) {
-      setViewportTranslateY(-(lineIndex - 1) * lineHeight);
-    } else {
-      setViewportTranslateY(0);
-    }
+    // Dynamically measure line pitch (vertical step between rows) from rendered word elements in DOM
+    const allWordEls = wrapperEl.querySelectorAll<HTMLElement>("[data-word-idx]");
+    let linePitch = 0;
+    const firstLineTop = allWordEls.length > 0 ? allWordEls[0].offsetTop : 0;
 
-    // Caret coordinates
-    const charElements = currentWordEl.querySelectorAll<HTMLElement>("[data-char-idx]");
-    const inputLen = currentInputRef.current.length;
-    if (inputLen < charElements.length) {
-      const activeCharEl = charElements[inputLen];
-      if (activeCharEl) {
-        setCaretPos({
-          x: currentWordEl.offsetLeft + activeCharEl.offsetLeft,
-          y: currentWordEl.offsetTop + activeCharEl.offsetTop,
-          height: activeCharEl.offsetHeight || 34,
-          visible: true,
-        });
-        return;
+    for (let i = 1; i < allWordEls.length; i++) {
+      const topDiff = allWordEls[i].offsetTop - firstLineTop;
+      if (topDiff > 8) {
+        linePitch = topDiff;
+        break;
       }
     }
 
-    // Caret at end of word or extra chars
-    if (charElements.length > 0) {
+    if (linePitch <= 0) {
+      const computed = window.getComputedStyle(wrapperEl);
+      const compLineHeight = parseFloat(computed.lineHeight) || currentWordEl.offsetHeight || 56;
+      const rowGap = parseFloat(computed.rowGap) || 4;
+      linePitch = compLineHeight + rowGap;
+    }
+
+    if (linePitch > 0 && Math.abs(linePitch - measuredLineHeight) > 1) {
+      setMeasuredLineHeight(linePitch);
+    }
+
+    // Determine current active line index
+    const lineIndex = Math.max(0, Math.round((currentWordEl.offsetTop - firstLineTop) / linePitch));
+
+    // Target row positioning:
+    // - 2-line mode: Active line is pinned to first row (row 0), fully opaque and never masked.
+    // - 3-line and 4-line modes: Active line sits in the vertical middle (row 1).
+    // Lines already typed scroll out upward; upcoming lines sit below active line.
+    const targetRow = lineCount === 2 ? 0 : 1;
+    const scrollLines = Math.max(0, lineIndex - targetRow);
+    setViewportTranslateY(-scrollLines * linePitch);
+
+    // Precise Caret coordinates directly measured from DOM glyph elements
+    const charElements = currentWordEl.querySelectorAll<HTMLElement>("[data-char-idx]");
+    const inputLen = currentInputRef.current.length;
+
+    let targetCharRect: DOMRect | null = null;
+    let isAfterChar = false;
+
+    if (inputLen < charElements.length) {
+      const activeCharEl = charElements[inputLen];
+      if (activeCharEl) {
+        targetCharRect = activeCharEl.getBoundingClientRect();
+      }
+    } else if (charElements.length > 0) {
       const lastCharEl = charElements[charElements.length - 1];
+      targetCharRect = lastCharEl.getBoundingClientRect();
+      isAfterChar = true;
+    }
+
+    if (targetCharRect) {
+      const charX = isAfterChar
+        ? targetCharRect.right - wrapperRect.left
+        : targetCharRect.left - wrapperRect.left;
+      const charY = targetCharRect.top - wrapperRect.top;
+      const charHeight = targetCharRect.height;
+
+      // Vertically center caret on active glyphs, fully covering active line glyph height
+      const caretHeight = Math.max(24, Math.round(charHeight * 0.76));
+      const caretY = charY + Math.round((charHeight - caretHeight) / 2);
+
       setCaretPos({
-        x: currentWordEl.offsetLeft + lastCharEl.offsetLeft + lastCharEl.offsetWidth,
-        y: currentWordEl.offsetTop + lastCharEl.offsetTop,
-        height: lastCharEl.offsetHeight || 34,
+        x: charX,
+        y: caretY,
+        height: caretHeight,
         visible: true,
       });
     } else {
+      const wordRect = currentWordEl.getBoundingClientRect();
+      const wordY = wordRect.top - wrapperRect.top;
+      const wordHeight = wordRect.height;
+      const caretHeight = Math.max(24, Math.round(wordHeight * 0.76));
+      const caretY = wordY + Math.round((wordHeight - caretHeight) / 2);
+
       setCaretPos({
-        x: currentWordEl.offsetLeft,
-        y: currentWordEl.offsetTop,
-        height: 34,
+        x: wordRect.left - wrapperRect.left,
+        y: caretY,
+        height: caretHeight,
         visible: true,
       });
     }
-  }, [words]);
+  }, [words, lineCount, measuredLineHeight]);
 
   useIsomorphicLayoutEffect(() => {
     updateCaretAndScroll();
@@ -771,6 +816,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       }
       if (e.key === "Backspace") {
         e.preventDefault();
+        if (onKeyDelete) onKeyDelete();
+        else onKeyClick();
         if (currentInputRef.current.length > 0) {
           const nextInput = currentInputRef.current.slice(0, -1);
           currentInputRef.current = nextInput;
@@ -885,6 +932,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       if (e.key === "Backspace") {
         e.preventDefault();
         if (errorBehavior === "strict") return;
+        if (onKeyDelete) onKeyDelete();
+        else onKeyClick();
         currentInputRef.current = "";
         setCurrentInput("");
         return;
@@ -944,6 +993,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       if (errorBehavior === "strict") {
         return;
       }
+
+      if (onKeyDelete) onKeyDelete();
+      else onKeyClick();
 
       if (activeInput.length > 0) {
         const charIdx = activeInput.length - 1;
@@ -1347,7 +1399,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               if (cIdx < currentInput.length) {
                 const typedChar = currentInput[cIdx];
                 if (typedChar === targetChar) {
-                  charColor = "var(--typed-color)";
+                  charColor = "var(--correct-color, #22c55e)";
                   charOpacity = 1.0;
                   borderClass = "border-transparent";
                 } else {
@@ -1377,8 +1429,26 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         </div>
       ) : (
         <div
-          style={{ height: `${lineCount * 56}px` }}
-          className="w-full overflow-hidden relative arena-mask py-1"
+          style={{
+            height: `${lineCount * measuredLineHeight}px`,
+            maskImage:
+              lineCount === 2
+                ? viewportTranslateY < 0
+                  ? "linear-gradient(to bottom, transparent 0%, black 8px, black 52%, rgba(0,0,0,0.35) 85%, transparent 100%)"
+                  : "linear-gradient(to bottom, black 0%, black 52%, rgba(0,0,0,0.35) 85%, transparent 100%)"
+                : viewportTranslateY < 0
+                ? "linear-gradient(to bottom, transparent 0%, black 15%, black 65%, rgba(0,0,0,0.35) 88%, transparent 100%)"
+                : "linear-gradient(to bottom, black 0%, black 65%, rgba(0,0,0,0.35) 88%, transparent 100%)",
+            WebkitMaskImage:
+              lineCount === 2
+                ? viewportTranslateY < 0
+                  ? "linear-gradient(to bottom, transparent 0%, black 8px, black 52%, rgba(0,0,0,0.35) 85%, transparent 100%)"
+                  : "linear-gradient(to bottom, black 0%, black 52%, rgba(0,0,0,0.35) 85%, transparent 100%)"
+                : viewportTranslateY < 0
+                ? "linear-gradient(to bottom, transparent 0%, black 15%, black 65%, rgba(0,0,0,0.35) 88%, transparent 100%)"
+                : "linear-gradient(to bottom, black 0%, black 65%, rgba(0,0,0,0.35) 88%, transparent 100%)",
+          }}
+          className="w-full overflow-hidden relative py-1"
         >
           {/* Out-of-Focus Overlay (Monkeytype-style) */}
           <AnimatePresence>
@@ -1414,8 +1484,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               <motion.div
                 animate={{
                   left: caretPos.x,
-                  top: caretPos.y + 4,
-                  height: caretPos.height - 8,
+                  top: caretPos.y,
+                  height: caretPos.height,
                 }}
                 transition={{
                   left: { type: "spring", stiffness: 600, damping: 38, mass: 0.1 },

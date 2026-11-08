@@ -3,6 +3,7 @@
 :root {
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --correct-color: #22c55e;
 }
 
 /* =========================================================================
@@ -21,6 +22,7 @@
   --accent-glow: rgba(245, 158, 11, 0.22);
   --typed: #ffffff;
   --typed-color: #ffffff;
+  --correct-color: #22c55e;
   --untyped: #717d91;
   --untyped-color: #717d91;
   --untyped-active: #8b9bb4;
@@ -51,6 +53,7 @@
   --accent-glow: rgba(122, 162, 247, 0.22);
   --typed: #ffffff;
   --typed-color: #ffffff;
+  --correct-color: #22c55e;
   --untyped: #737aa2;
   --untyped-color: #737aa2;
   --untyped-active: #8e96c4;
@@ -81,6 +84,7 @@
   --accent-glow: rgba(136, 192, 208, 0.22);
   --typed: #ffffff;
   --typed-color: #ffffff;
+  --correct-color: #22c55e;
   --untyped: #7c8b9d;
   --untyped-color: #7c8b9d;
   --untyped-active: #96a6b8;
