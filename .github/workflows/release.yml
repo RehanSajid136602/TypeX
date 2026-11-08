@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag (e.g. v0.3)'
+        description: 'Release Tag (e.g. v0.3.1)'
         required: false
-        default: 'v0.3'
+        default: 'v0.3.1'
 
 permissions:
   contents: write
@@ -117,7 +117,7 @@ jobs:
             -Ibackend/include \
             -D_WIN32_WINNT=0x0A00 \
             -static -static-libgcc -static-libstdc++ \
-            -lws2_32 -liphlpapi -lshell32 \
+            -lws2_32 -liphlpapi -lshell32 -ladvapi32 -luser32 \
             -mwindows \
             -o backend/TypeX.exe
           x86_64-w64-mingw32-strip --strip-unneeded backend/TypeX.exe

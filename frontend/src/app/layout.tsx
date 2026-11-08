@@ -31,6 +31,11 @@ export const metadata: Metadata = {
     description: "An ultra-minimalist, 120fps fluid typing benchmark powered by a native C++17 telemetry engine.",
     images: ["/typex-logo.jpg"],
   },
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/typex-logo.jpg",
+  },
 };
 
 export const viewport: Viewport = {

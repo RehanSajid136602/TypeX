@@ -74,7 +74,7 @@ Whether you are training finger biomechanics with adaptive rank-decay word sampl
 Pre-compiled, standalone desktop installers are available on the [**GitHub Releases**](https://github.com/RehanSajid136602/TypeX/releases/latest) page.
 
 ### 🪟 Windows Setup (Single `.exe` Installer)
-1. Download [**`TypeX-v0.3-Setup.exe`**](https://github.com/RehanSajid136602/TypeX/releases/download/v0.3/TypeX-v0.3-Setup.exe).
+1. Download [**`TypeX-v0.3.1-Setup.exe`**](https://github.com/RehanSajid136602/TypeX/releases/download/v0.3.1/TypeX-v0.3.1-Setup.exe).
 2. Double-click the installer, accept the License Terms, choose your installation directory (defaults to `C:\Program Files\TypeX`), and click **Install**.
 3. Launch **TypeX** from your Desktop or Start Menu. TypeX launches directly as a native Windows application without opening any terminal or command prompt window.
 
@@ -85,10 +85,10 @@ Pre-compiled, standalone desktop installers are available on the [**GitHub Relea
 ### 🐧 Linux Setup (`.deb` Package)
 TypeX supports **Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, and Debian 12 (Bookworm) amd64**:
 
-1. Download [**`typex_0.3_amd64.deb`**](https://github.com/RehanSajid136602/TypeX/releases/download/v0.3/typex_0.3_amd64.deb).
+1. Download [**`typex_0.3.1_amd64.deb`**](https://github.com/RehanSajid136602/TypeX/releases/download/v0.3.1/typex_0.3.1_amd64.deb).
 2. Install via `apt` to automatically resolve system dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libc6`):
    ```bash
-   sudo apt install ./typex_0.3_amd64.deb
+   sudo apt install ./typex_0.3.1_amd64.deb
    ```
 3. Launch TypeX from your application launcher or terminal:
    ```bash
