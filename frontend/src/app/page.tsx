@@ -25,7 +25,7 @@ import { ResultsCard } from "@/components/ResultsCard";
 import { MasteryStrip } from "@/components/MasteryStrip";
 import { KeyboardHUD } from "@/components/KeyboardHUD";
 import { MasteryDeltaView } from "@/components/MasteryDeltaView";
-import { Footer } from "@/components/Footer";
+
 import { authenticatedFetch } from "@/utils/apiSecurity";
 import { useSoundEngine } from "@/hooks/useSoundEngine";
 import { useProfile } from "@/context/ProfileContext";

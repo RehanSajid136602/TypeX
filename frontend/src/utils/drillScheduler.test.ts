@@ -1,7 +1,6 @@
 import {
   initDrillState,
   recordDrillOutcome,
-  DrillState,
 } from "./drillScheduler";
 
 // Simple reproducible pseudo-random generator

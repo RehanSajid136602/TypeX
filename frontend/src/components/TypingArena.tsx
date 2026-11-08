@@ -36,9 +36,6 @@ import {
   DrillState,
   initDrillState,
   recordDrillOutcome,
-  createInitialDrillQueue,
-  reinsertDrillWord,
-  findConfusableWords,
 } from "@/utils/drillScheduler";
 
 interface WordBatch {

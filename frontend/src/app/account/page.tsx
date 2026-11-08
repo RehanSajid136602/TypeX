@@ -13,17 +13,11 @@ import {
   TrendingUp,
   Download,
   AlertTriangle,
-  RotateCcw,
   Calendar,
-  Layers,
   ArrowLeft,
-  ChevronDown,
   Trash2,
   Edit2,
-  Archive,
-  BarChart2,
   Database,
-  ExternalLink,
 } from "lucide-react";
 
 // Biomechanical key to finger & hand mapping

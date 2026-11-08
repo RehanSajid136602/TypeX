@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { User, Sparkles, LogOut, ArrowRight } from "lucide-react";
+import { User, LogOut, ArrowRight } from "lucide-react";
 import { useProfile } from "@/context/ProfileContext";
 
 export interface FirstRunModalProps {

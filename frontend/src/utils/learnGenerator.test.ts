@@ -2,14 +2,10 @@ import {
   generateLearnBatch,
   isGateAchieved,
   getNextCurriculumTarget,
-  getAllowedLettersForTarget,
   createMasteryGateSnapshot,
 } from "./learnGenerator";
 import {
   CURRICULUM_KEY_SEQUENCE,
-  TARGET_SPEED_WPM,
-  UNLOCK_ACCURACY,
-  MIN_TARGET_ATTEMPTS,
   KeyStatus,
 } from "@/types/typing";
 

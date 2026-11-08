@@ -4,10 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { CompetitionState, Contestant, TelemetryResult, WordResult } from "@/types/typing";
 import { ResultsCard } from "@/components/ResultsCard";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Keyboard,
-  UserCheck,
   Play,
   ArrowRight,
   Sparkles,

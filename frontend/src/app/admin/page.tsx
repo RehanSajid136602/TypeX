@@ -24,10 +24,7 @@ import {
   Keyboard,
   RefreshCw,
   Eye,
-  CheckCircle2,
   AlertTriangle,
-  Flame,
-  ArrowRight,
   ShieldCheck,
   Plus,
   Edit2,
@@ -36,7 +33,6 @@ import {
   Wifi,
   Copy,
   KeyRound,
-  Globe,
   Database,
 } from "lucide-react";
 

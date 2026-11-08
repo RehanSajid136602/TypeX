@@ -7,9 +7,6 @@ import {
   DEFAULT_PERSONAL_SETTINGS,
   ThemeName,
   FontSize,
-  CaretStyle,
-  StopOnError,
-  SwitchProfile,
 } from "@/types/typing";
 import { authenticatedFetch } from "@/utils/apiSecurity";
 import { setSoundVolume, setSwitchProfile } from "@/hooks/useSoundEngine";

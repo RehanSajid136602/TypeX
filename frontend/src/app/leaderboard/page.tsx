@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { CompetitionState, ProjectorView, ResultRecord, Contestant } from "@/types/typing";
+import { CompetitionState, ProjectorView } from "@/types/typing";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Medal, Award, Crown, Zap } from "lucide-react";
 
