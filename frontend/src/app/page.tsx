@@ -12,6 +12,7 @@ import {
   ThemeName,
   TelemetryResult,
   LearnTrack,
+  LearnKeystroke,
   MasteryDeltaReport,
   MasteryStatus,
   LineCountOption,
@@ -136,10 +137,19 @@ export default function Home() {
   const [errorBehavior, setErrorBehavior] = useState<ErrorBehavior>("free");
   const [sessionNonce, setSessionNonce] = useState<number>(0);
 
+  const [testResults, setTestResults] = useState<TelemetryResult | null>(null);
+  const [errorSeconds, setErrorSeconds] = useState<number[]>([]);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [masteryDelta, setMasteryDelta] = useState<MasteryDeltaReport | null>(null);
+  // Raw learn keystroke log kept alongside the delta so the results screen can
+  // derive filtered SFB / finger latency medians that agree with each other.
+  const [masteryKeystrokes, setMasteryKeystrokes] = useState<LearnKeystroke[]>([]);
+
   const triggerFreshSession = useCallback(() => {
     setSessionNonce((n) => n + 1);
     setTestResults(null);
     setMasteryDelta(null);
+    setMasteryKeystrokes([]);
     setErrorSeconds([]);
     setIsFocusMode(false);
   }, []);
@@ -153,16 +163,11 @@ export default function Home() {
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [showKeyboard, setShowKeyboard] = useState<boolean>(true);
   const [masteryStatus, setMasteryStatus] = useState<MasteryStatus | null>(null);
-  const [masteryDelta, setMasteryDelta] = useState<MasteryDeltaReport | null>(null);
   const [nextChar, setNextChar] = useState<string>("");
   const [prevChar, setPrevChar] = useState<string>("");
   const [isHeatmapMode, setIsHeatmapMode] = useState<boolean>(false);
 
-  const [testResults, setTestResults] = useState<TelemetryResult | null>(null);
-  const [errorSeconds, setErrorSeconds] = useState<number[]>([]);
-
   // Focus mode states
-  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [isMouseActive, setIsMouseActive] = useState<boolean>(false);
   const mouseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -339,7 +344,8 @@ export default function Home() {
     [learnTrack]
   );
 
-  const handleLearnFinish = useCallback((delta: MasteryDeltaReport) => {
+  const handleLearnFinish = useCallback((delta: MasteryDeltaReport, keystrokes: LearnKeystroke[] = []) => {
+    setMasteryKeystrokes(keystrokes);
     setMasteryDelta(delta);
     setIsFocusMode(false);
     fetchMasteryStatus();
@@ -349,6 +355,7 @@ export default function Home() {
     setSessionNonce((n) => n + 1);
     setTestResults(null);
     setMasteryDelta(null);
+    setMasteryKeystrokes([]);
     setErrorSeconds([]);
     setIsFocusMode(false);
     fetchMasteryStatus();
@@ -380,6 +387,7 @@ export default function Home() {
               key="mastery-delta-view"
               delta={masteryDelta}
               fingerStats={masteryStatus?.fingerStats}
+              keystrokes={masteryKeystrokes}
               onContinue={handleRestart}
             />
           ) : testResults ? (

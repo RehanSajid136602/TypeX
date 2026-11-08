@@ -125,6 +125,8 @@ export interface LearnKeystroke {
   correct: boolean;
   isFirstAttempt?: boolean;
   isDrill?: boolean;
+  /** Key only exists because an earlier mistake was corrected (not a latency sample). */
+  corrected?: boolean;
 }
 
 export interface LearnSubmitPayload {

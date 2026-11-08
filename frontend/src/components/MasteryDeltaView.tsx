@@ -1,58 +1,40 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Trophy, Sparkles, AlertTriangle } from "lucide-react";
 import { MasteryDeltaReport, FingerStat, MIN_TARGET_ATTEMPTS } from "@/types/typing";
+import {
+  FINGER_LABELS,
+  computeFingerLatency,
+  computeSfbStats,
+  describeBigram,
+  TOP_SFB_LIMIT,
+  MIN_SAMPLES as MIN_SFB_SAMPLES,
+  PAUSE_CAP_MS as SFB_PAUSE_CAP_MS,
+} from "@/utils/sfbStats";
 
 interface MasteryDeltaViewProps {
   delta: MasteryDeltaReport;
   fingerStats?: Record<string, FingerStat>;
+  /** Raw learn-mode keystroke log; source of truth for SFB + finger latency. */
+  keystrokes?: readonly FlightKeystrokeLike[];
   onContinue: () => void;
 }
 
-// Human-readable finger labels used by the SFB rows (e.g. "L middle").
-const FINGER_LABELS: Record<string, string> = {
-  L_PINKY: "L pinky",
-  L_RING: "L ring",
-  L_MIDDLE: "L middle",
-  L_INDEX: "L index",
-  R_INDEX: "R index",
-  R_MIDDLE: "R middle",
-  R_RING: "R ring",
-  R_PINKY: "R pinky",
-};
-
-// Characters grouped by the finger that strikes them. Mirrors the engine's
-// biomechanical map so a same-finger bigram can be named by its finger.
-const KEY_FINGERS: [string, string][] = [
-  ["`~1!qaz", "L_PINKY"],
-  ["2@wsx", "L_RING"],
-  ["3#edc", "L_MIDDLE"],
-  ["4$5%rtfgvb", "L_INDEX"],
-  ["6^7&yuhjnm", "R_INDEX"],
-  ["8*ik,<", "R_MIDDLE"],
-  ["9(ol.>", "R_RING"],
-  ["0)-_=+p[]{};:'\"/?\\|", "R_PINKY"],
-];
-
-const CHAR_FINGERS: Record<string, string> = {};
-for (const [chars, finger] of KEY_FINGERS) {
-  for (const ch of chars) CHAR_FINGERS[ch] = finger;
-}
-
-const describeBigram = (bigram: string): string => {
-  if (bigram.length >= 2 && bigram[0].toLowerCase() === bigram[1].toLowerCase()) {
-    return "same key";
-  }
-  const finger =
-    CHAR_FINGERS[bigram[0]?.toLowerCase()] ?? CHAR_FINGERS[bigram[1]?.toLowerCase()];
-  return finger ? FINGER_LABELS[finger] : "—";
+type FlightKeystrokeLike = {
+  expected: string;
+  actual?: string;
+  flightMs: number;
+  correct: boolean;
+  isDrill?: boolean;
+  corrected?: boolean;
 };
 
 export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
   delta,
   fingerStats = {},
+  keystrokes,
   onContinue,
 }) => {
   // Listen for Enter / Space key to fast forward to next lesson
@@ -101,21 +83,46 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
 
   // A finger only has data once it has actually struck a key; the engine
   // pre-seeds every finger with a placeholder latency, so keystrokes decide.
+  // Both cards read the same filtered flight-time samples: clean key-to-key
+  // transitions inside a word, pauses above the cap dropped, median per bucket.
+  const hasKeystrokes = Boolean(keystrokes && keystrokes.length > 0);
+  const medians = useMemo(
+    () => (hasKeystrokes ? computeFingerLatency(keystrokes!) : {}),
+    [keystrokes, hasKeystrokes]
+  );
+
   const fingerRows = fingerOrder.map((f) => {
+    // Without a keystroke log (query refetch path) fall back to engine stats.
+    const median = medians[f.id];
+    if (median) {
+      return { ...f, hasData: true, avgMs: median.medianMs, samples: median.samples };
+    }
     const stat = fingerStats[f.id];
+    const fallback = hasKeystrokes ? 0 : stat?.avgMs ?? 0;
     return {
       ...f,
-      hasData: (stat?.keystrokes ?? 0) > 0,
-      avgMs: stat?.avgMs ?? 0,
+      hasData: !hasKeystrokes && (stat?.keystrokes ?? 0) > 0,
+      avgMs: fallback,
+      samples: 0,
     };
   });
   const maxAvgMs = fingerRows.reduce(
     (max, f) => (f.hasData ? Math.max(max, f.avgMs) : max),
     0
   );
-  const weakestWithData =
-    delta.weakestFinger !== undefined &&
-    (fingerStats[delta.weakestFinger.finger]?.keystrokes ?? 0) > 0;
+  const slowestFinger = fingerRows
+    .filter((f) => f.hasData)
+    .reduce<(typeof fingerRows)[number] | null>(
+      (worst, f) => (worst === null || f.avgMs > worst.avgMs ? f : worst),
+      null
+    );
+  const weakestWithData = Boolean(slowestFinger);
+
+  // SFB rows: same helper rules, slowest first, top 3, minimum sample count.
+  const sfbRows = useMemo(() => {
+    if (!hasKeystrokes) return delta.sfbBottlenecks ?? [];
+    return computeSfbStats(keystrokes!).slice(0, TOP_SFB_LIMIT);
+  }, [keystrokes, hasKeystrokes, delta.sfbBottlenecks]);
 
   return (
     <motion.div
@@ -228,12 +235,12 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           <span className="text-[var(--inactive-color)] opacity-80 uppercase tracking-wider text-[11px]">
             8-Finger Latency Telemetry
           </span>
-          {weakestWithData && delta.weakestFinger && (
+          {weakestWithData && slowestFinger && (
             <span className="flex items-center gap-1.5 text-[11px] text-[#e06c75] opacity-90">
               <AlertTriangle className="w-3.5 h-3.5" />
               <span>
-                Weakest: {FINGER_LABELS[delta.weakestFinger.finger] ?? delta.weakestFinger.finger} (
-                {delta.weakestFinger.avgMs}ms)
+                Weakest: {FINGER_LABELS[slowestFinger.id as keyof typeof FINGER_LABELS] ?? slowestFinger.id} (
+                {Math.round(slowestFinger.avgMs)}ms)
               </span>
             </span>
           )}
@@ -241,7 +248,7 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
 
         <div className="grid grid-cols-8 gap-2 pt-2">
           {fingerRows.map((f, idx) => {
-            const isWeakest = f.hasData && delta.weakestFinger?.finger === f.id;
+            const isWeakest = f.hasData && slowestFinger?.id === f.id;
             // Bar height is purely proportional to measured latency: the slowest
             // finger fills the strip, every other finger scales against it.
             const heightPercent =
@@ -319,9 +326,9 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
           <span className="text-[10px] uppercase tracking-wider text-[var(--inactive-color)] opacity-80">
             Same-Finger Bigrams (SFB)
           </span>
-          {delta.sfbBottlenecks && delta.sfbBottlenecks.length > 0 ? (
+          {sfbRows.length > 0 ? (
             <div className="flex flex-col gap-1.5 mt-1">
-              {delta.sfbBottlenecks.map((item, idx) => (
+              {sfbRows.map((item, idx) => (
                 <div
                   key={idx}
                   className="flex items-center justify-between text-xs px-2.5 py-1.5 rounded bg-white/[0.03] border border-white/[0.04]"
@@ -332,15 +339,21 @@ export const MasteryDeltaView: React.FC<MasteryDeltaViewProps> = ({
                       {describeBigram(item.bigram)}
                     </span>
                   </div>
-                  <span className="text-xs text-[var(--accent-color)] font-medium tabular-nums">
-                    {Math.round(item.avgMs)}ms
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[var(--inactive-color)] opacity-50 tabular-nums">
+                      n={"samples" in item ? item.samples : item.count}
+                    </span>
+                    <span className="text-xs text-[var(--accent-color)] font-medium tabular-nums">
+                      {Math.round("medianMs" in item ? item.medianMs : item.avgMs)}ms
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-xs text-[var(--inactive-color)] opacity-60 py-3 text-center">
-              ✓ Fluid transitions (SFB latency within threshold)
+              Not enough clean same-finger transitions yet (needs {MIN_SFB_SAMPLES}+
+              per bigram, under a {SFB_PAUSE_CAP_MS}ms pause cap)
             </div>
           )}
         </div>

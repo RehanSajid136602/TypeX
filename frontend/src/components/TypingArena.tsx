@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TestMode,
@@ -259,7 +259,7 @@ interface TypingArenaProps {
   focusKey?: string | null;
   keyStatuses?: KeyStatus[];
   onTargetUnlock?: (newTarget: string, updatedStatuses: KeyStatus[]) => void;
-  onLearnFinish?: (delta: MasteryDeltaReport) => void;
+  onLearnFinish?: (delta: MasteryDeltaReport, keystrokes: LearnKeystroke[]) => void;
   onFinish: (result: TelemetryResult, errorSeconds: number[]) => void;
   onActivity: () => void;
   isFocusMode: boolean;
@@ -329,6 +329,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const repairedWordsSet = useRef<Set<string>>(new Set());
   const missedWordsSet = useRef<Set<string>>(new Set());
   const firstAttemptKeyIndices = useRef<Set<string>>(new Set());
+  // Word-slot indices whose key was re-typed after a backspace (corrections).
+  const correctedIndices = useRef<Set<string>>(new Set());
   const learnKeystrokesRef = useRef<LearnKeystroke[]>([]);
   const lastKeyTimeRef = useRef<number>(0);
   const lastTypedCharRef = useRef<string>("");
@@ -390,11 +392,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync state to refs for non-reactive reads
-  useEffect(() => { wordsRef.current = words; }, [words]);
-  useEffect(() => { currentWordIdxRef.current = currentWordIdx; }, [currentWordIdx]);
-  useEffect(() => { currentInputRef.current = currentInput; }, [currentInput]);
-  useEffect(() => { typedWordsRef.current = typedWords; }, [typedWords]);
+  // Ref mirrors of the state above, written in one layout effect so every
+  // reader sees the committed value (keeps React Compiler and ESLint happy).
+  useLayoutEffect(() => {
+    wordsRef.current = words;
+    currentWordIdxRef.current = currentWordIdx;
+    currentInputRef.current = currentInput;
+    typedWordsRef.current = typedWords;
+  }, [words, currentWordIdx, currentInput, typedWords]);
 
   // Fetch words from backend (used by reset actions and key handlers)
   const fetchWords = useCallback(
@@ -691,7 +696,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           delta.newConfidence = 100;
         }
         delta.missedWords = finalMissedWords;
-        onLearnFinish?.(delta);
+        onLearnFinish?.(delta, learnKeystrokesRef.current);
         return;
       }
     } catch (e) {
@@ -761,6 +766,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     repairedWordsSet.current.clear();
     missedWordsSet.current.clear();
     firstAttemptKeyIndices.current.clear();
+    correctedIndices.current.clear();
     learnKeystrokesRef.current = [];
     advancedTargetsRef.current.clear();
     lastKeyTimeRef.current = 0;
@@ -1078,6 +1084,16 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           const nextInput = currentInputRef.current.slice(0, -1);
           currentInputRef.current = nextInput;
           setCurrentInput(nextInput);
+          // Audit marker only: the re-typed key is a correction, not latency.
+          learnKeystrokesRef.current.push({
+            expected: "",
+            actual: "Backspace",
+            flightMs: 0,
+            correct: false,
+            isDrill: true,
+            isFirstAttempt: false,
+            corrected: true,
+          });
         }
         return;
       }
@@ -1384,6 +1400,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         const charKey = `${activeWordIdx}:${activeInput.length}`;
         const isFirstAttempt = !firstAttemptKeyIndices.current.has(charKey);
         firstAttemptKeyIndices.current.add(charKey);
+        if (!isFirstAttempt) correctedIndices.current.add(charKey);
 
         learnKeystrokesRef.current.push({
           expected: expectedChar || "",
@@ -1392,6 +1409,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           correct: isCharCorrect,
           isFirstAttempt,
           isDrill: false,
+          corrected: correctedIndices.current.has(charKey),
         });
 
         const targetLetter = lessonActiveTargetRef.current.toLowerCase();
@@ -1404,19 +1422,20 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         }
 
         if (isTargetChar) {
-          const stat = liveTargetStatRef.current || {
+          const stat: KeyStatus = {
             key: targetLetter,
             confidence: 0,
             emaFlightMs: 350,
-            attempts: 0,
             errors: 0,
             status: "active",
+            ...(liveTargetStatRef.current ?? {}),
+            // Build a fresh object; nothing read from the ref is mutated.
+            attempts: (liveTargetStatRef.current?.attempts || 0) + 1,
+            samples: (liveTargetStatRef.current?.samples || 0) + 1,
+            firstAttemptAttempts: isFirstAttempt
+              ? (liveTargetStatRef.current?.firstAttemptAttempts || 0) + 1
+              : liveTargetStatRef.current?.firstAttemptAttempts,
           };
-          stat.attempts = (stat.attempts || 0) + 1;
-          stat.samples = (stat.samples || 0) + 1;
-          if (isFirstAttempt) {
-            stat.firstAttemptAttempts = (stat.firstAttemptAttempts || 0) + 1;
-          }
           if (isCharCorrect) {
             const TARGET_TIME_MS = 342.86; // 35 WPM
             const curFlight = Math.min(2000, flightMs);
