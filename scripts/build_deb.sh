@@ -41,7 +41,7 @@ cp "$STAGE_DIR/usr/lib/typex/typex-server" "$ROOT_DIR/backend/typex_server"
 
 # 3. Build native desktop shell binary
 echo "[+] Compiling C++ native desktop shell..."
-g++ -std=c++17 -O3 "$ROOT_DIR/desktop_shell/main.cpp" -o "$STAGE_DIR/usr/lib/typex/typex-app"
+g++ -std=c++17 -O3 "$ROOT_DIR/desktop_shell/main.cpp" -ldl -o "$STAGE_DIR/usr/lib/typex/typex-app"
 strip --strip-unneeded "$STAGE_DIR/usr/lib/typex/typex-app"
 
 # 4. Create /usr/bin/typex launcher wrapper

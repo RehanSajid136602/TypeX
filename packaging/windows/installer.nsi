@@ -9,7 +9,7 @@
 ; Define app properties
 !define PRODUCT_NAME "TypeX"
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "0.1"
+  !define PRODUCT_VERSION "0.3"
 !endif
 !define PRODUCT_PUBLISHER "TypeX Team"
 !define PRODUCT_WEB_SITE "https://github.com/RehanSajid136602/TypeX"

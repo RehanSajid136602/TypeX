@@ -1,6 +1,6 @@
 {
   "name": "typex-monorepo",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "private": true,
   "description": "TypeX — High-Performance Minimalist Typing Engine & Live Stage Competition Platform",
   "scripts": {
