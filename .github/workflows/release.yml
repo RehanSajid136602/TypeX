@@ -160,8 +160,13 @@ jobs:
           pnpm pkg get version
 
       - name: Install desktop dependencies
+        # electron-builder resolves buildResources from build/buildResourcesDir;
+        # the NSIS customisation include lives in packaging/windows and is copied
+        # here because the repository-wide "build/" ignore rule excludes desktop/build.
         shell: bash
         run: |
+          mkdir -p desktop/build
+          cp packaging/windows/installer.nsh desktop/build/installer.nsh
           cd desktop
           pnpm install
 
