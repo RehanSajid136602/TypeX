@@ -451,7 +451,25 @@ public:
         // sure the minimum alphabet is present, then recompute the weakest-key
         // focus from the loaded statistics.
         normalizeProfile();
-        trackActiveTarget_["phonetic_unlock"] = computeFocusKey();
+
+        // healProfile() already resolved the single active post-home target and
+        // wrote it into trackActiveTarget_. Do not clobber it with
+        // computeFocusKey(): that scans home keys too and returns the first
+        // zero-confidence key, which reintroduces the drift where the strip
+        // shows one target and the lesson drills another.
+        if (!resolveHealedTarget()) {
+            trackActiveTarget_["phonetic_unlock"] = computeFocusKey();
+        }
+    }
+
+    // True when trackActiveTarget_["phonetic_unlock"] points at a real,
+    // not-yet-mastered key (i.e. the value healProfile() chose).
+    bool resolveHealedTarget() const {
+        auto it = trackActiveTarget_.find("phonetic_unlock");
+        if (it == trackActiveTarget_.end() || it->second.empty()) return false;
+        auto ks = keyStats_.find(it->second);
+        if (ks == keyStats_.end()) return false;
+        return ks->second.status != "mastered";
     }
 
     json synthesizeLesson(const std::string& track, size_t count, const std::string& focusKeyOverride, const std::vector<std::string>& corpus) {
@@ -1295,7 +1313,13 @@ private:
     void loadProfile() {
         if (!std::filesystem::exists(profilePath_)) {
             normalizeProfile();
-            trackActiveTarget_["phonetic_unlock"] = computeFocusKey();
+            // normalizeProfile() -> healProfile() already chose the single active
+            // post-home target and stored it. computeFocusKey() scans home keys
+            // too and returns the first zero-confidence key ("e"), which would
+            // make the strip show one target while lessons drill another.
+            if (!resolveHealedTarget()) {
+                trackActiveTarget_["phonetic_unlock"] = computeFocusKey();
+            }
             saveProfile();
             return;
         }
