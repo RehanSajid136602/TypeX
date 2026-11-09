@@ -160,16 +160,22 @@ jobs:
           pnpm pkg get version
 
       - name: Install desktop dependencies
-        # electron-builder resolves nsis.include="build/installer.nsh" against
-        # buildResources (desktop/build). Keep that file tracked next to main.js and
-        # re-create it here, because the repository-wide "build/" rule in .gitignore
-        # would otherwise exclude a desktop/build/ copy from the checkout.
         shell: bash
         run: |
-          mkdir -p desktop/build
-          cp packaging/windows/installer.nsh desktop/build/installer.nsh
           cd desktop
           pnpm install
+
+      - name: Verify NSIS include is present
+        # electron-builder resolves nsis.include="build/installer.nsh" relative to
+        # buildResources (desktop/build). That file is tracked explicitly because the
+        # repository-wide "build/" ignore rule would otherwise drop it from checkout.
+        shell: bash
+        run: |
+          test -f desktop/build/installer.nsh || {
+            echo "::error::desktop/build/installer.nsh is missing from the checkout"
+            exit 1
+          }
+          cat desktop/build/installer.nsh
 
       - name: Build Electron installer (NSIS, publish disabled)
         shell: bash
