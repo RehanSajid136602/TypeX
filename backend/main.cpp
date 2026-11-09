@@ -1005,32 +1005,6 @@ int main(int argc, char** argv) {
         res.set_content(lesson.dump(), "application/json");
     });
 
-    // Endpoint 4b: POST /api/learn/advance
-    svr.Post("/api/learn/advance", [&masteryEngine, persistActiveMastery](const httplib::Request& req, httplib::Response& res) {
-        try {
-            auto payload = json::parse(req.body);
-            std::string track = payload.value("track", "phonetic_unlock");
-            std::string target = payload.value("target", "");
-
-            auto adv = masteryEngine.advanceTrack(track, target);
-            persistActiveMastery();
-
-            json resp = {
-                {"success", adv.first},
-                {"newTarget", adv.second},
-                {"status", masteryEngine.getStatus()}
-            };
-            res.set_content(resp.dump(), "application/json");
-        } catch (const std::exception& e) {
-            json err = {
-                {"error", "Failed to advance learn track"},
-                {"details", e.what()}
-            };
-            res.status = 400;
-            res.set_content(err.dump(), "application/json");
-        }
-    });
-
     // Endpoint 5: POST /api/learn/submit
     svr.Post("/api/learn/submit", [&masteryEngine, persistActiveMastery](const httplib::Request& req, httplib::Response& res) {
         try {
@@ -1237,7 +1211,55 @@ int main(int argc, char** argv) {
     });
 
     // POST /api/accounts/tests — Save completed test with authoritative server recomputation
-    svr.Post("/api/accounts/tests", [&dbManager, &corpus, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        // Endpoint 4b: POST /api/learn/advance
+    //
+    // Advancing mutates the persisted curriculum profile, so it is guarded:
+    //   * loopback + session-token auth (same policy as the account endpoints)
+    //   * the requested target must have actually met the mastery gate, unless
+    //     the caller is authenticated AND explicitly passes "force": true
+    svr.Post("/api/learn/advance", [&masteryEngine, persistActiveMastery, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
+        try {
+            if (!validateAccountSecurity(req, res)) return;
+
+            auto payload = json::parse(req.body);
+            std::string track = payload.value("track", "phonetic_unlock");
+            std::string target = payload.value("target", "");
+            const bool force = payload.value("force", false);
+
+            // A caller that has not earned the key cannot skip it. `force` is
+            // only honoured after the auth check above succeeded.
+            if (!force && !masteryEngine.isKeyReady(target)) {
+                res.status = 409;
+                json err = {
+                    {"success", false},
+                    {"error", "Target key has not met the mastery gate."},
+                    {"target", target},
+                    {"status", masteryEngine.getStatus()}
+                };
+                res.set_content(err.dump(), "application/json");
+                return;
+            }
+
+            auto adv = masteryEngine.advanceTrack(track, target);
+            persistActiveMastery();
+
+            json resp = {
+                {"success", adv.first},
+                {"newTarget", adv.second},
+                {"status", masteryEngine.getStatus()}
+            };
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            json err = {
+                {"error", "Failed to advance learn track"},
+                {"details", e.what()}
+            };
+            res.status = 400;
+            res.set_content(err.dump(), "application/json");
+        }
+    });
+
+svr.Post("/api/accounts/tests", [&dbManager, &corpus, validateAccountSecurity](const httplib::Request& req, httplib::Response& res) {
         if (!validateAccountSecurity(req, res)) return;
         try {
             auto payload = json::parse(req.body);

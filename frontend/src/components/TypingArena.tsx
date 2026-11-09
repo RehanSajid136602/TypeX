@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TestMode,
@@ -320,10 +320,20 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const drillStateRef = useRef<DrillState | null>(null);
   const frozenGateSnapshotRef = useRef<MasteryGateSnapshot | null>(null);
 
-  const [activeTargetKey, setActiveTargetKey] = useState<string>(focusKey || "s");
+  // Seeded from the profile's active key rather than a hardcoded "s", so the
+  // arena header and the strip agree on the very first paint instead of waiting
+  // for the async word batch to land.
+  const profileActiveKey = useMemo(() => {
+    const active = keyStatuses?.find((s) => s.status === "active");
+    return active?.key?.toLowerCase();
+  }, [keyStatuses]);
+
+  const [activeTargetKey, setActiveTargetKey] = useState<string>(
+    focusKey || profileActiveKey || "s"
+  );
   const [isPatternDrill, setIsPatternDrill] = useState<boolean>(false);
 
-  const lessonActiveTargetRef = useRef<string>("s");
+  const lessonActiveTargetRef = useRef<string>(focusKey || profileActiveKey || "s");
   const liveTargetStatRef = useRef<KeyStatus | null>(null);
   const advancedTargetsRef = useRef<Set<string>>(new Set());
   const [milestoneToast, setMilestoneToast] = useState<{ unlockedKey: string; isComplete?: boolean } | null>(null);
@@ -1539,7 +1549,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
               stat.bestFlightMs && stat.bestFlightMs > 0
                 ? Math.min(stat.bestFlightMs, curFlight)
                 : curFlight;
-            stat.bestSpeedConfidence = TARGET_TIME_MS / stat.bestFlightMs;
+            // Best flight time is unbounded below, so a very fast run would
+            // otherwise store a ratio above 1.0 and leak as "425%" in the UI.
+            // The gate only cares about >= 1.0, so cap the stored ratio.
+            stat.bestSpeedConfidence = Math.min(1.0, TARGET_TIME_MS / stat.bestFlightMs);
             stat.confidence = Math.min(100, Math.round(stat.bestSpeedConfidence * 100));
           } else {
             stat.errors = (stat.errors || 0) + 1;

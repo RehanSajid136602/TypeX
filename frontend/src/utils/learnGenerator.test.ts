@@ -3,11 +3,14 @@ import {
   isGateAchieved,
   getNextCurriculumTarget,
   createMasteryGateSnapshot,
+  normalizeMasteryProfile,
 } from "./learnGenerator";
 import {
   CURRICULUM_KEY_SEQUENCE,
+  MIN_TARGET_CHARS,
   KeyStatus,
 } from "@/types/typing";
+import { MONKEYTYPE_ENGLISH_1K } from "@/utils/monkeytypeWordlists";
 
 // Seedable Mulberry32 PRNG
 function mulberry32(seed: number): () => number {
@@ -202,6 +205,111 @@ function runTests() {
     throw new Error(`Snapshot target mutated! Expected 'h', got ${snapshotH.target}`);
   }
   console.log("  ✓ Test F PASSED: Snapshot retains 100% green state after curriculum advances to next token.");
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test G: normalizeMasteryProfile heals the split TARGET A / TARGET K state
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log("[Test G] Testing normalizeMasteryProfile self-healing...");
+  {
+    const gateMet = (key: string, status: KeyStatus["status"]): KeyStatus => ({
+      key,
+      status,
+      confidence: 100,
+      bestSpeedConfidence: 1.2,
+      emaFlightMs: 200,
+      bestFlightMs: 200,
+      attempts: 40,
+      errors: 0,
+      samples: 40,
+      firstAttemptAttempts: 40,
+      firstAttemptErrors: 0,
+    });
+
+    // 'a' already meets the gate but was left "active"; later keys mastered.
+    const drifted: KeyStatus[] = [
+      gateMet("e", "mastered"), gateMet("n", "mastered"), gateMet("i", "mastered"),
+      gateMet("t", "mastered"), gateMet("r", "mastered"), gateMet("l", "mastered"),
+      gateMet("s", "mastered"), gateMet("a", "active"),   // beaten but still active
+      gateMet("o", "active"),                              // split active
+      gateMet("d", "active"),
+      gateMet("y", "mastered"), gateMet("c", "mastered"), gateMet("h", "mastered"),
+      gateMet("k", "mastered"),
+    ];
+
+    const healed = normalizeMasteryProfile(drifted);
+    const actives = healed.filter((k) => k.status === "active");
+
+    if (healed.find((k) => k.key === "a")?.status !== "mastered") {
+      throw new Error("'a' met the gate but was not promoted to mastered");
+    }
+    const postHomeActives = actives.filter(
+      (k) => CURRICULUM_KEY_SEQUENCE.indexOf(k.key as never) >= 6
+    );
+    if (postHomeActives.length > 1) {
+      throw new Error(
+        `Expected at most one active post-home key, got ${postHomeActives.length}: ${postHomeActives
+          .map((k) => k.key)
+          .join(",")}`
+      );
+    }
+    // Curriculum must stay contiguous: no mastered key before an active one,
+    // apart from the home keys.
+    const activeKey = postHomeActives[0]?.key;
+    if (activeKey) {
+      const activeIdx = CURRICULUM_KEY_SEQUENCE.indexOf(activeKey as never);
+      for (let i = 6; i < activeIdx; i++) {
+        const st = healed.find((k) => k.key === CURRICULUM_KEY_SEQUENCE[i]);
+        if (st?.status !== "mastered") {
+          throw new Error(
+            `Curriculum gap: '${CURRICULUM_KEY_SEQUENCE[i]}' is ${st?.status} before active '${activeKey}'`
+          );
+        }
+      }
+    }
+    console.log("  ✓ Test G PASSED: gate-met keys promoted, single active target enforced.");
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test H: lessons carry at least MIN_TARGET_CHARS target occurrences
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log("[Test H] Testing minimum target characters per lesson...");
+  {
+    for (const target of ["e", "a", "z", "q"]) {
+      const unlocked = CURRICULUM_KEY_SEQUENCE.slice(
+        0,
+        Math.max(6, CURRICULUM_KEY_SEQUENCE.indexOf(target as never))
+      );
+      const batch = generateLearnBatch(unlocked, target, 25, mulberry32(4242));
+      const chars = batch.reduce(
+        (n, w) => n + Array.from(w).filter((c) => c === target).length,
+        0
+      );
+      if (batch.length !== 25) {
+        throw new Error(`Expected 25 words for '${target}', got ${batch.length}`);
+      }
+      // Early curriculum keys have very little legal vocabulary, so the floor is
+      // MIN_TARGET_CHARS capped by what is actually achievable. Assert we reach
+      // the achievable floor and, once vocabulary is rich enough, the full 35.
+      const legalWords = MONKEYTYPE_ENGLISH_1K.filter(
+        (w) =>
+          w.length >= 2 &&
+          w.length <= 8 &&
+          [...w].every((c) => [...unlocked, target].includes(c as never))
+      ).map((w) => [...w].filter((c) => c === target).length)
+        .sort((a, b) => b - a);
+      let achievable = 0;
+      for (let i = 0; i < 25 && i < legalWords.length; i++) achievable += legalWords[i];
+      const floor = Math.min(MIN_TARGET_CHARS, achievable);
+
+      if (chars < floor) {
+        throw new Error(
+          `Target '${target}' lesson has ${chars} target chars, expected >= ${floor} (achievable ${achievable}, cap ${MIN_TARGET_CHARS})`
+        );
+      }
+    }
+    console.log(`  ✓ Test H PASSED: 25-word lessons reach the achievable target-char floor.`);
+  }
 
   console.log("\n==========================================");
   console.log("🎉 ALL LEARN GENERATOR TESTS PASSED!");

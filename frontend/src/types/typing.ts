@@ -68,6 +68,9 @@ export const CURRICULUM_KEY_SEQUENCE = [
 export const TARGET_SPEED_WPM = 35.0;
 export const UNLOCK_ACCURACY = 95.0;
 export const MIN_TARGET_ATTEMPTS = 20;
+// A lesson must contain at least this many occurrences of the target key.
+// Mirrors MIN_TARGET_CHARS in backend/include/learning_engine.hpp.
+export const MIN_TARGET_CHARS = 35;
 
 export interface KeyStatus {
   key: string;

@@ -32,12 +32,25 @@ export const MasteryStrip: React.FC<MasteryStripProps> = ({
 
   const effectiveTarget = focusKey || activeTarget || "s";
   const targetStat = statusMap.get(effectiveTarget.toLowerCase());
-  const targetSpeedConf = targetStat && targetStat.bestSpeedConfidence !== undefined
-    ? Math.round(targetStat.bestSpeedConfidence * 100)
-    : (targetStat ? Math.round(targetStat.confidence) : 0);
-  const targetAcc = targetStat && targetStat.firstAttemptAttempts && targetStat.firstAttemptAttempts > 0
-    ? Math.round((1 - (targetStat.firstAttemptErrors || 0) / targetStat.firstAttemptAttempts) * 100)
-    : 100;
+  // bestSpeedConfidence is a raw ratio (targetTimeMs / bestFlightMs) and has no
+  // upper bound: typing 4.25x faster than the 35 WPM target yields 4.25. Every
+  // displayed percentage is clamped to 0-100 so the strip can never show "425%".
+  const rawSpeedConf =
+    targetStat && targetStat.bestSpeedConfidence !== undefined
+      ? targetStat.bestSpeedConfidence * 100
+      : targetStat
+      ? targetStat.confidence
+      : 0;
+  const targetSpeedConf = Math.min(100, Math.max(0, Math.round(rawSpeedConf)));
+  const targetAcc = Math.min(
+    100,
+    Math.max(
+      0,
+      targetStat && targetStat.firstAttemptAttempts && targetStat.firstAttemptAttempts > 0
+        ? Math.round((1 - (targetStat.firstAttemptErrors || 0) / targetStat.firstAttemptAttempts) * 100)
+        : 100
+    )
+  );
 
   return (
     <div

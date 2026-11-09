@@ -47,8 +47,14 @@ class Api:
 
 def bootstrap(api: Api) -> int:
     api.token = api.request("GET", "/api/accounts/bootstrap")["token"]
+    # Unique name per run: the dev database persists profiles between runs and
+    # the endpoint rejects duplicates.
+    import time as _time
+
     created = api.request(
-        "POST", "/api/accounts/profiles", {"name": "analytics-e2e", "avatar": "default"}
+        "POST",
+        "/api/accounts/profiles",
+        {"name": f"analytics-e2e-{int(_time.time() * 1000) % 1000000}", "avatar": "default"},
     )
     profile_id = created.get("profileId") or created.get("id")
     if not profile_id:

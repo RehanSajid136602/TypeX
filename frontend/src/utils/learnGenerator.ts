@@ -2,6 +2,7 @@ import {
   CURRICULUM_KEY_SEQUENCE,
   UNLOCK_ACCURACY,
   MIN_TARGET_ATTEMPTS,
+  MIN_TARGET_CHARS,
   KeyStatus,
   MasteryGateSnapshot,
 } from "@/types/typing";
@@ -341,5 +342,120 @@ export function generateLearnBatch(
     batchWordCounts[word] = (batchWordCounts[word] || 0) + 1;
   }
 
+  // Mirror the backend: a lesson should contain at least MIN_TARGET_CHARS
+  // occurrences of the target key, or the typist can never reach the
+  // MIN_TARGET_ATTEMPTS gate in a single lesson. This REPLACES filler slots so
+  // the batch length contract (exactly `size`) is preserved.
+  const countTarget = (w: string) => Array.from(w).filter((c) => c === t).length;
+  let targetCharCount = batch.reduce((n, w) => n + countTarget(w), 0);
+
+  // The floor is capped by what the available vocabulary can actually supply.
+  // Early in the curriculum only a handful of words are legal (e.g. 14 words
+  // for "enitrl", at most 2 target chars each), so a flat 35 would be
+  // unreachable. Take the best achievable density, never demanding more than
+  // that.
+  const sortedHits = realTargetWords.map(countTarget).sort((a, b) => b - a);
+  let achievable = 0;
+  for (let i = 0; i < batch.length && i < sortedHits.length; i++) achievable += sortedHits[i];
+  const floor = Math.min(MIN_TARGET_CHARS, achievable);
+
+  if (targetCharCount < floor && realTargetWords.length > 0) {
+    const order = batch.map((_, i) => i);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    let guard = 0;
+    for (const idx of order) {
+      if (targetCharCount >= floor || guard++ > 500) break;
+      const replacement = pickTargetWord();
+      const hits = countTarget(replacement);
+      if (hits === 0) continue;
+      targetCharCount += hits - countTarget(batch[idx]);
+      batch[idx] = replacement;
+    }
+  }
+
   return batch;
+}
+
+/**
+ * Client-side mirror of the backend's MasteryEngine::healProfile().
+ *
+ * The browser keeps a localStorage copy of the mastery profile so Learn mode
+ * works without a round trip. That copy can drift from the backend (or from an
+ * older app version) in two ways that show up as a contradictory UI:
+ *
+ *   1. A key that already satisfies the gate is still "active", so the top bar
+ *      asks for TARGET A while a later key is already mastered (TARGET K).
+ *   2. Several keys are "active" at once, so different surfaces each pick a
+ *      different one.
+ *
+ * This pass is idempotent and safe to run on every load/update: it promotes
+ * every gate-satisfying key to mastered, then leaves exactly one post-home
+ * target active — the earliest not-yet-mastered key in curriculum order.
+ */
+export function normalizeMasteryProfile(statuses: KeyStatus[]): KeyStatus[] {
+  const HOME_KEY_COUNT = 6; // e n i t r l
+
+  const byKey = new Map<string, KeyStatus>();
+  for (const s of statuses) {
+    byKey.set(s.key.toLowerCase(), { ...s, key: s.key.toLowerCase() });
+  }
+
+  // Every curriculum key must exist so the strip and the active target agree.
+  for (const k of CURRICULUM_KEY_SEQUENCE) {
+    if (!byKey.has(k)) {
+      byKey.set(k, {
+        key: k,
+        confidence: 0,
+        emaFlightMs: 220,
+        attempts: 0,
+        errors: 0,
+        samples: 0,
+        status: "locked",
+      });
+    }
+  }
+
+  // 1. Promote anything that already meets the gate.
+  for (const k of CURRICULUM_KEY_SEQUENCE) {
+    const st = byKey.get(k)!;
+    if (st.status !== "mastered" && isGateAchieved(st)) {
+      st.status = "mastered";
+    }
+  }
+
+  // 2. Home keys are always available starters.
+  for (let i = 0; i < HOME_KEY_COUNT && i < CURRICULUM_KEY_SEQUENCE.length; i++) {
+    const st = byKey.get(CURRICULUM_KEY_SEQUENCE[i])!;
+    if (st.status === "locked") st.status = "active";
+  }
+
+  // 3. The single post-home target is the earliest unmet key.
+  let primaryTarget: string | null = null;
+  for (let i = HOME_KEY_COUNT; i < CURRICULUM_KEY_SEQUENCE.length; i++) {
+    const st = byKey.get(CURRICULUM_KEY_SEQUENCE[i])!;
+    if (st.status !== "mastered") {
+      primaryTarget = CURRICULUM_KEY_SEQUENCE[i];
+      break;
+    }
+  }
+
+  // 4. Collapse any split active state onto that one target.
+  for (let i = HOME_KEY_COUNT; i < CURRICULUM_KEY_SEQUENCE.length; i++) {
+    const k = CURRICULUM_KEY_SEQUENCE[i];
+    const st = byKey.get(k)!;
+    if (st.status === "mastered") continue;
+
+    if (primaryTarget === null) {
+      if (st.status === "active") st.status = "unlocked";
+    } else if (k === primaryTarget) {
+      st.status = "active";
+    } else if (st.status === "active" || st.status === "unlocked") {
+      st.status = "locked";
+    }
+  }
+
+  return Array.from(byKey.values());
 }

@@ -32,6 +32,9 @@ inline constexpr double UNLOCK_ACCURACY = 95.0;
 inline constexpr int MIN_TARGET_ATTEMPTS = 20;
 inline constexpr int MIN_ALPHABET_SIZE = 6;
 inline constexpr size_t MIN_REAL_WORDS = 15;
+// A 25-word lesson must contain at least this many occurrences of the target
+// key, otherwise the typist can never reach MIN_TARGET_ATTEMPTS in one lesson.
+inline constexpr size_t MIN_TARGET_CHARS = 35;
 inline constexpr int QUAD_ALPHABET = 27;  // 0 = space, 1..26 = a..z
 inline const std::vector<char> CURRICULUM_KEY_SEQUENCE = {
     'e','n','i','t','r','l','s','a','o','d','y','c','h','g','m','u','p','b','k','v','w','f','z','x','q','j'
@@ -955,6 +958,83 @@ private:
                 st.bestSpeedConfidence = 1.0;
             }
         }
+
+        healProfile();
+    }
+
+    // Repairs a profile whose target state drifted out of sync.
+    //
+    // Two failure modes are possible after migrations or a partially persisted
+    // advance:
+    //   1. A key that already satisfies the mastery gate is still "active" or
+    //      "unlocked", so the UI keeps asking for a key the typist has beaten
+    //      (e.g. TARGET A) while a later key is already mastered (TARGET K).
+    //   2. Several keys are simultaneously "active", so different surfaces pick
+    //      different active keys and disagree.
+    //
+    // This pass promotes every gate-satisfying key to mastered, then guarantees
+    // exactly one active post-home target: the earliest not-yet-mastered key in
+    // curriculum order. Later unlocked keys are demoted to "locked" so the
+    // curriculum stays contiguous and only one target can ever be highlighted.
+    void healProfile() {
+        const size_t homeKeyCount = MIN_ALPHABET_SIZE;
+
+        // 1. Promote anything that already meets the gate.
+        for (char c : CURRICULUM_KEY_SEQUENCE) {
+            std::string s(1, c);
+            auto it = keyStats_.find(s);
+            if (it == keyStats_.end()) continue;
+            if (it->second.status == "mastered") continue;
+            if (keyReady(it->second)) {
+                it->second.status = "mastered";
+            }
+        }
+
+        // 2. Home keys stay available; they are the starter alphabet.
+        for (size_t i = 0; i < homeKeyCount && i < CURRICULUM_KEY_SEQUENCE.size(); ++i) {
+            std::string s(1, CURRICULUM_KEY_SEQUENCE[i]);
+            auto it = keyStats_.find(s);
+            if (it == keyStats_.end()) continue;
+            if (it->second.status == "locked") it->second.status = "active";
+        }
+
+        // 3. Find the single post-home target: the earliest unmet key.
+        std::string primaryTarget;
+        for (size_t i = homeKeyCount; i < CURRICULUM_KEY_SEQUENCE.size(); ++i) {
+            std::string s(1, CURRICULUM_KEY_SEQUENCE[i]);
+            auto it = keyStats_.find(s);
+            if (it == keyStats_.end()) continue;
+            if (it->second.status != "mastered") {
+                primaryTarget = s;
+                break;
+            }
+        }
+
+        // 4. Collapse any split active state onto that one target.
+        for (size_t i = homeKeyCount; i < CURRICULUM_KEY_SEQUENCE.size(); ++i) {
+            std::string s(1, CURRICULUM_KEY_SEQUENCE[i]);
+            auto it = keyStats_.find(s);
+            if (it == keyStats_.end()) continue;
+            auto& st = it->second;
+            if (st.status == "mastered") continue;
+
+            if (primaryTarget.empty()) {
+                // Curriculum finished: nothing left to drill, keep it unlocked.
+                if (st.status == "active") st.status = "unlocked";
+            } else if (s == primaryTarget) {
+                st.status = "active";
+            } else if (st.status == "active" || st.status == "unlocked") {
+                // A later key must not be active ahead of an earlier unmet one.
+                st.status = "locked";
+            }
+        }
+
+        // 5. Keep the persisted per-track target consistent with the healed
+        //    profile. The strip reads trackActiveTarget["phonetic_unlock"], so a
+        //    stale value here is exactly the "TARGET A" vs "TARGET: K" split.
+        if (!primaryTarget.empty()) {
+            trackActiveTarget_["phonetic_unlock"] = primaryTarget;
+        }
     }
 
     std::string computeFocusKey() const {
@@ -1248,6 +1328,17 @@ private:
     }
 
 public:
+    // Public gate query for the advance endpoint: an un-authenticated caller
+    // must not be able to skip a lesson, so the route verifies the target has
+    // actually met the gate before delegating to advanceTrack().
+    bool isKeyReady(const std::string& key) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::string k = key.empty() ? "e" : std::string(1, static_cast<char>(tolower(key[0])));
+        auto it = keyStats_.find(k);
+        if (it == keyStats_.end()) return false;
+        return keyReady(it->second);
+    }
+
     std::pair<bool, std::string> advanceTrack(const std::string& track, const std::string& currentTarget) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (track == "phonetic_unlock") {
@@ -1754,7 +1845,12 @@ public:
         for (const auto& w : phaseC) for (char c : w) if (c == key) totalTargetChars++;
 
         retries = 0;
-        while (totalTargetChars < MIN_TARGET_ATTEMPTS && retries < 300) {
+        // Top up until the lesson carries enough target letters, but never grow
+        // the lesson past `targetTotal` words: the client renders exactly
+        // `count` slots and an over-long batch desynchronises the progress
+        // counter (e.g. "26 / 25").
+        while (totalTargetChars < MIN_TARGET_ATTEMPTS && retries < 300 &&
+               (phaseA.size() + phaseB.size() + phaseC.size()) < targetTotal) {
             retries++;
             std::string extra = "";
             for (const auto& w : realWords) {
@@ -1779,6 +1875,45 @@ public:
         out.insert(out.end(), phaseA.begin(), phaseA.end());
         out.insert(out.end(), phaseB.begin(), phaseB.end());
         out.insert(out.end(), phaseC.begin(), phaseC.end());
+
+        // Every lesson must exercise the target key enough to be worth typing.
+        // The phase split can otherwise produce short lessons with only a few
+        // occurrences of `key`, which never reach MIN_TARGET_ATTEMPTS and leave
+        // the typist unable to unlock the key no matter how well they type.
+        // Fillers are REPLACED (not appended) so the lesson length is unchanged.
+        auto countKey = [&](const std::string& w) {
+            size_t n = 0;
+            for (char c : w) if (c == key) n++;
+            return n;
+        };
+        size_t targetCharCount = 0;
+        for (const auto& w : out) targetCharCount += countKey(w);
+
+        // Cap the floor by what the available vocabulary can supply: early keys
+        // have very few legal words, so a flat 35 would be unreachable.
+        {
+            std::vector<size_t> hits;
+            hits.reserve(realWords.size());
+            for (const auto& w : realWords) hits.push_back(countKey(w));
+            std::sort(hits.rbegin(), hits.rend());
+            size_t achievable = 0;
+            for (size_t i = 0; i < out.size() && i < hits.size(); ++i) achievable += hits[i];
+            const size_t floor = std::min(MIN_TARGET_CHARS, achievable);
+            if (targetCharCount < floor && !realWords.empty()) {
+                std::uniform_int_distribution<size_t> pick(0, realWords.size() - 1);
+                size_t guard = 0;
+                for (size_t i = out.size(); i-- > 0 && guard++ < 500;) {
+                    if (targetCharCount >= floor) break;
+                    const std::string& repl = realWords[pick(rng)];
+                    const size_t h = countKey(repl);
+                    if (h == 0) continue;
+                    const size_t have = countKey(out[i]);
+                    if (h <= have) continue;
+                    out[i] = repl;
+                    targetCharCount += h - have;
+                }
+            }
+        }
     }
 
     void synthesizeFingerLesson(

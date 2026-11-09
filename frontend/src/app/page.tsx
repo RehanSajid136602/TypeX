@@ -27,6 +27,7 @@ import { KeyboardHUD } from "@/components/KeyboardHUD";
 import { MasteryDeltaView } from "@/components/MasteryDeltaView";
 
 import { authenticatedFetch } from "@/utils/apiSecurity";
+import { normalizeMasteryProfile } from "@/utils/learnGenerator";
 import { useSoundEngine } from "@/hooks/useSoundEngine";
 import { useProfile } from "@/context/ProfileContext";
 import { useSettings } from "@/context/SettingsContext";
@@ -159,6 +160,23 @@ export default function Home() {
   }, []);
 
   // Phase 1-4: Neuro-Motor Mastery Engine states
+  //
+  // Every profile that enters state is passed through normalizeMasteryProfile so
+  // the strip, the TARGET badge and the lesson words always read the same
+  // single active key (see learnGenerator.normalizeMasteryProfile).
+  const healMasteryStatus = useCallback((status: MasteryStatus, track: string): MasteryStatus => {
+    if (!status?.keyStatuses?.length) return status;
+    const healed = normalizeMasteryProfile(status.keyStatuses);
+    const active = healed.find((k) => k.status === "active");
+    return {
+      ...status,
+      keyStatuses: healed,
+      trackActiveTarget: active
+        ? { ...status.trackActiveTarget, [track]: active.key }
+        : status.trackActiveTarget,
+    };
+  }, []);
+
   const [learnTrack, setLearnTrack] = useState<LearnTrack>("phonetic_unlock");
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [showKeyboard, setShowKeyboard] = useState<boolean>(true);
@@ -189,18 +207,18 @@ export default function Home() {
   // Refresh the Mastery Profile from the C++ backend on demand
   const fetchMasteryStatus = useCallback(async () => {
     const data = await requestMasteryStatus();
-    if (data) setMasteryStatus(data);
-  }, []);
+    if (data) setMasteryStatus(healMasteryStatus(data, learnTrack));
+  }, [healMasteryStatus, learnTrack]);
 
   // Initial load. The state update lands in a promise callback instead of
   // synchronously inside the effect body, and the request is aborted on unmount.
   useEffect(() => {
     const controller = new AbortController();
     requestMasteryStatus(controller.signal).then((data) => {
-      if (data && !controller.signal.aborted) setMasteryStatus(data);
+      if (data && !controller.signal.aborted) setMasteryStatus(healMasteryStatus(data, learnTrack));
     });
     return () => controller.abort();
-  }, []);
+  }, [healMasteryStatus, learnTrack]);
 
   // Deliberate mouse movement gesture filter (>= 80px in <= 300ms) for Focus Mode reveal
   const mouseTrackingRef = useRef<{ startX: number; startY: number; startTime: number }>({
@@ -336,13 +354,17 @@ export default function Home() {
     (newTarget: string, updatedStatuses: KeyStatus[]) => {
       setMasteryStatus((prev) => {
         if (!prev) return prev;
+        // Self-heal the profile before it reaches any UI surface, so the strip,
+        // the TARGET badge and the lesson words can never disagree about which
+        // key is active.
+        const healed = normalizeMasteryProfile(updatedStatuses);
         return {
           ...prev,
           trackActiveTarget: {
             ...prev.trackActiveTarget,
             [learnTrack]: newTarget,
           },
-          keyStatuses: updatedStatuses,
+          keyStatuses: healed,
         };
       });
     },
