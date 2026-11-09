@@ -33,3 +33,7 @@ tests/test_learning_engine
 
 # electron-builder reads its NSIS customisation include from buildResources
 !desktop/build/installer.nsh
+
+# Electron packager output and the executable the Windows CI stage copies in
+desktop/dist-electron/
+desktop/backend/
