@@ -318,6 +318,9 @@ struct LogEntry {
     std::string expected;  // target character, empty when unknown
     bool hasCorrectFlag = false;
     bool correct = true;
+    // The word this keystroke was typed into. Optional: clients that do not
+    // send it fall back to final-text word errors only.
+    std::string word;
 };
 
 struct KeyAggregate {
@@ -416,6 +419,49 @@ inline std::vector<std::pair<std::string, int>> wordErrorsFromOutcomes(
         if (errs > 0) out.emplace_back(w.target, errs);
     }
     return out;
+}
+
+// Words that caused error *friction* even when the typist fixed them.
+//
+// A typo that was corrected with Backspace never survives into the final text,
+// so wordErrorsFromOutcomes() cannot see it and the "Most-Mistyped Words" panel
+// stays empty for careful typists. This walks the keystroke log instead and
+// counts every word that received at least one wrong keystroke.
+inline std::vector<std::pair<std::string, int>> wordErrorsFromKeystrokes(
+    const std::vector<LogEntry>& log) {
+    std::vector<std::pair<std::string, int>> out;
+    std::unordered_map<std::string, int> counts;
+    std::vector<std::string> order;
+
+    for (const auto& e : log) {
+        if (e.word.empty()) continue;
+        if (e.hasCorrectFlag && !e.correct) {
+            if (counts.find(e.word) == counts.end()) order.push_back(e.word);
+            counts[e.word]++;
+        }
+    }
+    for (const auto& w : order) out.emplace_back(w, counts[w]);
+    return out;
+}
+
+// Combines both sources, keeping the larger count per word. The final-text view
+// sees uncorrected mistakes; the keystroke view sees corrected ones. A word can
+// legitimately appear in both.
+inline std::vector<std::pair<std::string, int>> mergeWordErrors(
+    std::vector<std::pair<std::string, int>> a,
+    const std::vector<std::pair<std::string, int>>& b) {
+    std::unordered_map<std::string, size_t> index;
+    for (size_t i = 0; i < a.size(); ++i) index[a[i].first] = i;
+    for (const auto& kv : b) {
+        auto it = index.find(kv.first);
+        if (it == index.end()) {
+            index[kv.first] = a.size();
+            a.push_back(kv);
+        } else if (kv.second > a[it->second].second) {
+            a[it->second].second = kv.second;
+        }
+    }
+    return a;
 }
 
 }  // namespace scoring

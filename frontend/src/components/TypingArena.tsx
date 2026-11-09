@@ -1346,6 +1346,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     const targetWord = activeWords[activeWordIdx] || "";
     const activeInput = currentInputRef.current;
 
+    // Stamp the word on the log entry as soon as the target is known, so every
+    // branch below (including the early return for stop-on-error) carries it.
+    logEntry.word = targetWord;
+
     // 1. BACKSPACE HANDLER
     if (e.key === "Backspace") {
       e.preventDefault();
@@ -1355,6 +1359,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       if (onKeyDelete) onKeyDelete();
       else onKeyClick();
+
+      // Backspace is navigation, not typing. Mark it correct so the scorer does
+      // not count it as a wrong attempt against the word, but it contributes no
+      // `expected` and therefore never creates a confusion pair.
+      logEntry.correct = true;
 
       if (activeInput.length > 0) {
         const charIdx = activeInput.length - 1;
@@ -1555,6 +1564,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         setStopErrorFlash(true);
         setTimeout(() => setStopErrorFlash(false), 200);
         incorrectKeystrokesCount.current += 1;
+        // A rejected keystroke is still a real mistype and must reach telemetry,
+        // otherwise stop-on-error users record no key errors or confusions.
+        logEntry.expected = expectedChar || "";
+        logEntry.correct = false;
         const currentElapsed = startTimeRef.current
           ? Math.floor((performance.now() - startTimeRef.current) / 1000)
           : 0;
@@ -1581,7 +1594,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       // Telemetry: what was expected versus what was pressed. This is the bit
       // the persistence layer uses to attribute errors to the target key.
-      logEntry.expected = activeInput.length < targetWord.length ? targetWord[activeInput.length] : "";
+      logEntry.expected = expectedChar || "";
       logEntry.correct = isCharCorrect;
       finalCharsTypedRef.current = Math.max(finalCharsTypedRef.current, activeWordIdx);
 

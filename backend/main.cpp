@@ -1327,6 +1327,12 @@ int main(int argc, char** argv) {
                         le.correct = entry["correct"].get<bool>();
                         logHasCorrectness = true;
                     }
+                    // Which word this keystroke went into. Needed so a typo the
+                    // typist fixed with Backspace still marks that word as
+                    // error-prone; without it the panel only sees final text.
+                    if (entry.contains("word") && entry["word"].is_string()) {
+                        le.word = entry["word"].get<std::string>();
+                    }
                     if (!le.key.empty()) logEntries.push_back(le);
                 }
             }
@@ -1421,23 +1427,39 @@ int main(int argc, char** argv) {
                           });
             }
 
+            // Word errors come from three places and all are additive:
+            //   1. the client's explicit list (final-text misses)
+            //   2. final-text outcomes, for clients that send no list
+            //   3. keystroke friction, so a typo fixed with Backspace still
+            //      marks the word it happened in
+            std::vector<std::pair<std::string, int>> mergedWordErrors;
+
             if (payload.contains("wordErrors") && payload["wordErrors"].is_array()) {
-                std::unordered_map<std::string, int> merged;
+                std::unordered_map<std::string, int> fromClient;
                 for (const auto& we : payload["wordErrors"]) {
                     const std::string w = we.value("word", "");
                     const int cnt = we.value("count", we.value("errorCount", 1));
-                    if (!w.empty() && cnt > 0) merged[w] += cnt;
+                    if (!w.empty() && cnt > 0) fromClient[w] += cnt;
                 }
-                for (const auto& kv : merged) {
-                    wordErrors.push_back({kv.first, kv.second});
+                for (const auto& kv : fromClient) {
+                    mergedWordErrors.emplace_back(kv.first, kv.second);
                 }
-                std::sort(wordErrors.begin(), wordErrors.end(),
-                          [](const auto& a, const auto& b) { return a.word < b.word; });
             } else if (!wordOutcomes.empty()) {
-                for (const auto& we : typex::scoring::wordErrorsFromOutcomes(wordOutcomes)) {
-                    wordErrors.push_back({we.first, we.second});
-                }
+                mergedWordErrors =
+                    typex::scoring::wordErrorsFromOutcomes(wordOutcomes);
             }
+
+            if (logHasCorrectness) {
+                mergedWordErrors = typex::scoring::mergeWordErrors(
+                    std::move(mergedWordErrors),
+                    typex::scoring::wordErrorsFromKeystrokes(logEntries));
+            }
+
+            for (const auto& we : mergedWordErrors) {
+                wordErrors.push_back({we.first, we.second});
+            }
+            std::sort(wordErrors.begin(), wordErrors.end(),
+                      [](const auto& a, const auto& b) { return a.word < b.word; });
 
             const typex::scoring::ScoringResult scored = typex::scoring::computeScore(in);
 

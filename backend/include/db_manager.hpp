@@ -1069,7 +1069,12 @@ public:
             {"longestStreak", longestStreak}
         };
         res["keyStats"] = res["mostMistypedKeys"];
-        res["confusions"] = res["topConfusions"];
+        // Alias contract: the account page reads `confusions` / `wordErrors`.
+        // These must copy the arrays that were actually built above — reading a
+        // key that is never written (the old `res["topConfusions"]`) produced
+        // JSON null, which rendered as "No letter confusions recorded".
+        res["confusions"] = res["letterConfusions"];
+        res["topConfusions"] = res["letterConfusions"];
         res["wordErrors"] = res["mostMistypedWords"];
         res["recentTests"] = res["testsHistory"];
         res["histogram"] = res["wpmDistribution"];

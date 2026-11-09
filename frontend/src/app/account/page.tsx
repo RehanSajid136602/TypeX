@@ -1095,15 +1095,22 @@ export default function AccountPage() {
                             const stat = keyStatsMap.get(k);
                             const attempts = stat?.attempts || 0;
                             const errors = stat?.errors || 0;
+                            // No minimum-attempt gate: a key that was tried even
+                            // once and got errors is real signal. A key with zero
+                            // attempts is simply neutral. Rates are kept to one
+                            // decimal so small but non-zero error rates (1/30 =
+                            // 3.3%) never render as "0%".
                             const rate =
-                              attempts >= 10 ? Number(((errors / attempts) * 100).toFixed(1)) : 0;
+                              attempts > 0
+                                ? Number(((errors / attempts) * 100).toFixed(1))
+                                : 0;
 
                             let bg = "bg-white/5 text-[var(--untyped-color)]";
-                            if (attempts >= 10) {
+                            if (attempts > 0) {
                               if (rate > 15) bg = "bg-red-500/40 text-red-200 border-red-500/60";
                               else if (rate > 8)
                                 bg = "bg-orange-500/30 text-orange-200 border-orange-500/40";
-                              else if (rate > 3)
+                              else if (rate > 0)
                                 bg = "bg-yellow-500/20 text-yellow-200 border-yellow-500/30";
                               else bg = "bg-emerald-500/20 text-emerald-200 border-emerald-500/30";
                             }
@@ -1119,7 +1126,9 @@ export default function AccountPage() {
                               >
                                 <span className="text-sm uppercase">{k}</span>
                                 <span className="text-[9px] opacity-70">
-                                  {attempts >= 10 ? `${rate}%` : "-"}
+                                  {attempts > 0
+                                    ? `${errors > 0 && rate < 0.1 ? "<0.1" : rate}%`
+                                    : "-"}
                                 </span>
                               </button>
                             );

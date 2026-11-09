@@ -219,6 +219,9 @@ export interface KeystrokeLogEntry {
   time: number;
   expected?: string;
   correct?: boolean;
+  /** Target word this keystroke was typed into, so a typo fixed with
+   *  Backspace still counts as friction for that word. */
+  word?: string;
 }
 
 export interface ConfusionEntry {
