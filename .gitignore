@@ -30,3 +30,6 @@ screenshots/
 .DS_Store
 
 tests/test_learning_engine
+
+# electron-builder reads its NSIS customisation include from buildResources
+!desktop/build/installer.nsh
