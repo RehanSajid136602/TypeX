@@ -5,12 +5,16 @@ const {
   BrowserWindow,
   dialog,
   shell,
-  net,
   session,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+// Node's net module, not electron's: electron exports a `net` with the Chromium
+// networking API (net.request), which has no createServer(). Importing it as
+// `net` from the electron module made findFreePort() throw
+// "net.createServer is not a function", so the backend never started.
+const net = require('net');
 const { spawn, spawnSync } = require('child_process');
 
 app.setName('TypeX');
