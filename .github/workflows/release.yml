@@ -186,7 +186,7 @@ jobs:
         run: |
           cd desktop
           pnpm exec electron-builder --win nsis --x64 --publish never \
-            -c.artifactName='TypeX-Setup-${version}-x64.${ext}'
+            --config.artifactName='TypeX-Setup-${version}-x64.${ext}'
 
       - name: Upload .exe installer
         uses: actions/upload-artifact@v4
