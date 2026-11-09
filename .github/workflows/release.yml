@@ -185,14 +185,16 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: |
           cd desktop
-          pnpm exec electron-builder --win nsis --x64 --publish never \
-            --config.artifactName='TypeX-Setup-${version}-x64.${ext}'
+          pnpm exec electron-builder --win nsis --x64 --publish never
+          ls -l dist-electron
 
       - name: Upload .exe installer
+        # The artifact name comes from desktop/package.json ("build.nsis.artifactName"),
+        # so upload whatever installer electron-builder produced instead of guessing it.
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: desktop/dist-electron/TypeX-Setup-${{ needs.prepare.outputs.version }}-x64.exe
+          path: desktop/dist-electron/*.exe
           if-no-files-found: error
 
   release:
