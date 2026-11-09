@@ -1,0 +1,1110 @@
+{
+  "base_url": "http://127.0.0.1:18109",
+  "profile_id": 1,
+  "duration_seconds": 60.0,
+  "cases": [
+    {
+      "name": "clean",
+      "final_correct": 100,
+      "correctChars": 100,
+      "incorrectChars": 0,
+      "extraChars": 0,
+      "correctedErrors": 0,
+      "totalKeystrokes": 100,
+      "true_final_chars": 100,
+      "wordResults": [
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        }
+      ],
+      "analyze": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 100.0,
+        "totalKeystrokes": 100,
+        "latency_ms": 0.587
+      },
+      "persisted": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 100.0,
+        "totalKeystrokes": 100,
+        "latency_ms": 1.047
+      },
+      "true_net_wpm_if_final_text": 20.0,
+      "net_wpm_inflation_pct": 0.0
+    },
+    {
+      "name": "one_in_ten_corrected",
+      "final_correct": 100,
+      "correctChars": 110,
+      "incorrectChars": 10,
+      "extraChars": 0,
+      "correctedErrors": 10,
+      "totalKeystrokes": 130,
+      "true_final_chars": 100,
+      "wordResults": [
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        }
+      ],
+      "analyze": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 96.2,
+        "totalKeystrokes": 130,
+        "latency_ms": 0.583
+      },
+      "persisted": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 96.2,
+        "totalKeystrokes": 130,
+        "latency_ms": 1.028
+      },
+      "true_net_wpm_if_final_text": 20.0,
+      "net_wpm_inflation_pct": 0.0
+    },
+    {
+      "name": "half_corrected",
+      "final_correct": 100,
+      "correctChars": 150,
+      "incorrectChars": 50,
+      "extraChars": 0,
+      "correctedErrors": 50,
+      "totalKeystrokes": 250,
+      "true_final_chars": 100,
+      "wordResults": [
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        }
+      ],
+      "analyze": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 90.0,
+        "totalKeystrokes": 250,
+        "latency_ms": 0.721
+      },
+      "persisted": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 90.0,
+        "totalKeystrokes": 250,
+        "latency_ms": 1.937
+      },
+      "true_net_wpm_if_final_text": 20.0,
+      "net_wpm_inflation_pct": 0.0
+    },
+    {
+      "name": "correct_key_retyped",
+      "final_correct": 100,
+      "correctChars": 102,
+      "incorrectChars": 0,
+      "extraChars": 0,
+      "correctedErrors": 1,
+      "totalKeystrokes": 103,
+      "true_final_chars": 100,
+      "wordResults": [
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "a",
+          "typed": "a"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "that",
+          "typed": "that"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "the",
+          "typed": "the"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "and",
+          "typed": "and"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "you",
+          "typed": "you"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "of",
+          "typed": "of"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "to",
+          "typed": "to"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "in",
+          "typed": "in"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "is",
+          "typed": "is"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        },
+        {
+          "original": "it",
+          "typed": "it"
+        },
+        {
+          "original": " ",
+          "typed": " "
+        }
+      ],
+      "analyze": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 99.5,
+        "totalKeystrokes": 103,
+        "latency_ms": 0.664
+      },
+      "persisted": {
+        "rawWpm": 20.0,
+        "netWpm": 20.0,
+        "accuracy": 99.5,
+        "totalKeystrokes": 103,
+        "latency_ms": 1.046
+      },
+      "true_net_wpm_if_final_text": 20.0,
+      "net_wpm_inflation_pct": 0.0
+    }
+  ],
+  "latency": {
+    "analyze": {
+      "n": 200,
+      "median_ms": 0.386,
+      "p95_ms": 0.581,
+      "max_ms": 0.805
+    },
+    "persist": {
+      "n": 50,
+      "median_ms": 1.011,
+      "p95_ms": 1.474,
+      "max_ms": 1.806
+    }
+  },
+  "parity": {
+    "net_wpm_matches": true,
+    "raw_wpm_matches": true,
+    "accuracy_matches": true
+  },
+  "telemetry": {
+    "key_errors": {
+      "e": 3,
+      "o": 1,
+      " ": 0,
+      "a": 0,
+      "c": 0,
+      "f": 0,
+      "i": 0,
+      "k": 0,
+      "m": 0,
+      "q": 0,
+      "r": 0,
+      "t": 0,
+      "u": 0
+    },
+    "total_key_errors": 4,
+    "confusions": [
+      {
+        "count": 3,
+        "expected": "e",
+        "typed": "h"
+      },
+      {
+        "count": 1,
+        "expected": "o",
+        "typed": "a"
+      }
+    ],
+    "confusion_count": 2,
+    "word_errors": [
+      {
+        "count": 1,
+        "word": "form"
+      }
+    ],
+    "word_error_count": 1
+  },
+  "notes": [
+    "Both endpoints now run backend/include/scoring_engine.hpp::computeScore, so displayed and persisted values are identical.",
+    "The probes still send the OLD cumulative correctChars to show that the final-text wordResults clamp is what removes the inflation.",
+    "netWpm is derived from correct characters surviving in the final text, capped at finalCharsTyped.",
+    "Per-key errors, confusions and word errors are now persisted (telemetry block above)."
+  ]
+}

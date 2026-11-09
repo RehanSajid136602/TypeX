@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:learn": "tsx src/utils/learnGenerator.test.ts",
     "test:drill": "tsx src/utils/drillScheduler.test.ts",
-    "backup:event": "node scripts/backup_event.js"
+    "backup:event": "node scripts/backup_event.js",
+    "test:scoring": "tsx src/utils/scoring.test.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

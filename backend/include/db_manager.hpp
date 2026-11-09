@@ -438,6 +438,57 @@ public:
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Weak-key lookup for the adaptive word sampler
+    //
+    // Reads the per-key error rates recorded by POST /api/accounts/tests and
+    // returns the worst keys, most-error-prone first. Keys with no stored
+    // attempts are ignored. This is what makes adaptive=1 on /api/words work
+    // without the client having to send weakness_weights.
+    // ─────────────────────────────────────────────────────────────────────────
+    struct WeakKey {
+        std::string key;
+        int attempts = 0;
+        int errors = 0;
+        double errorRate = 0.0;
+    };
+
+    std::vector<WeakKey> getWeakKeys(int64_t profileId, int limit = 8) {
+        std::lock_guard<std::mutex> lock(dbMutex_);
+        std::vector<WeakKey> out;
+        if (!db_) return out;
+
+        const char* sql =
+            "SELECT ks.key, SUM(ks.attempts), SUM(ks.errors) "
+            "FROM test_key_stats ks JOIN tests t ON ks.test_id = t.id "
+            "WHERE t.profile_id = ? GROUP BY ks.key HAVING SUM(ks.attempts) > 0;";
+
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return out;
+        sqlite3_bind_int64(stmt, 1, profileId);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* k = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            if (!k) continue;
+            WeakKey wk;
+            wk.key = k;
+            wk.attempts = static_cast<int>(sqlite3_column_int64(stmt, 1));
+            wk.errors = static_cast<int>(sqlite3_column_int64(stmt, 2));
+            if (wk.errors <= 0) continue;  // only keys that actually failed
+            wk.errorRate = static_cast<double>(wk.errors) / static_cast<double>(wk.attempts);
+            out.push_back(wk);
+        }
+        sqlite3_finalize(stmt);
+
+        std::sort(out.begin(), out.end(), [](const WeakKey& a, const WeakKey& b) {
+            if (a.errorRate != b.errorRate) return a.errorRate > b.errorRate;
+            if (a.errors != b.errors) return a.errors > b.errors;
+            return a.key < b.key;
+        });
+        if (limit > 0 && static_cast<int>(out.size()) > limit) out.resize(static_cast<size_t>(limit));
+        return out;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Mastery Profile JSON Storage Per User
     // ─────────────────────────────────────────────────────────────────────────
 

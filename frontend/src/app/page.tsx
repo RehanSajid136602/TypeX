@@ -289,9 +289,14 @@ export default function Home() {
           uncorrectedErrors: results.uncorrectedErrors,
           correctedErrors: results.correctedErrors || 0,
           totalKeystrokes: results.totalKeystrokes,
+          finalCharsTyped: results.finalCharsTyped,
           perSecondWpm: results.perSecondWpm || [],
           keystrokesLog: results.keystrokesLog || [],
           wordResults: results.wordResults || [],
+          // Telemetry that made test_key_stats/test_confusions/test_word_errors
+          // permanent zeroes before the fix (audit §6.4).
+          confusions: results.confusions || [],
+          wordErrors: results.wordErrors || [],
           startedAt: results.startedAt || (Date.now() - Math.round(results.durationSeconds * 1000)),
           tzOffsetMin: new Date().getTimezoneOffset(),
         };

@@ -37,3 +37,5 @@ tests/test_learning_engine
 # Electron packager output and the executable the Windows CI stage copies in
 desktop/dist-electron/
 desktop/backend/
+tests/test_scoring
+__pycache__/

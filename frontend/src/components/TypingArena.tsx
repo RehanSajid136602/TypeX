@@ -17,6 +17,7 @@ import {
   LineCountOption,
   KeyStatus,
   MasteryGateSnapshot,
+  KeystrokeLogEntry,
 } from "@/types/typing";
 import { RotateCcw, MousePointerClick } from "lucide-react";
 import { LiveSparkline } from "./LiveSparkline";
@@ -37,6 +38,11 @@ import {
   initDrillState,
   recordDrillOutcome,
 } from "@/utils/drillScheduler";
+import {
+  buildConfusions,
+  buildWordErrors,
+  resolveCharacterCounts,
+} from "@/utils/scoring";
 
 interface WordBatch {
   words: string[];
@@ -380,7 +386,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // ── Phase 6: Word Results for Heatmap ─────────────────────────────────────
   const completedWordResults = useRef<WordResult[]>([]);
-  const keystrokesLogRef = useRef<{ key: string; time: number }[]>([]);
+  // Each entry carries the scoring telemetry the persistence layer needs:
+  // `expected` (the target character) and `correct` (did it land right).
+  // Without these, test_key_stats.errors, test_confusions and
+  // test_word_errors were always empty (audit §6.4).
+  const keystrokesLogRef = useRef<KeystrokeLogEntry[]>([]);
+  // Total printable key presses, including retypes and corrections. Only used
+  // as the accuracy denominator, never for WPM.
+  const totalKeystrokesRef = useRef<number>(0);
+  // Characters of the target text the typist actually reached. Caps
+  // correctChars so a retype cannot inflate Net WPM (audit §6.2).
+  const finalCharsTypedRef = useRef<number>(0);
   const correctedErrorsCount = useRef<number>(0);
   const testStartedEpochMs = useRef<number>(0);
 
@@ -585,13 +601,49 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       allWordResults.push({ original: currentWords[activeWordIdx] || "", typed: activeInput });
     }
 
-    const payload: TelemetryPayload = {
-      durationSeconds: Math.max(1.0, duration),
+    // ── Authoritative final-text counters ─────────────────────────────────
+    // Score the text that exists now. The live ``*KeystrokesCount`` refs are
+    // cumulative and include every retype, which is what inflated Net WPM by
+    // up to 50% before this (audit §6.2). They are still reported as
+    // keystroke telemetry, never as character counts.
+    const liveCounts = {
       correctChars: correctKeystrokesCount.current,
       incorrectChars: incorrectKeystrokesCount.current,
       extraChars: extraKeystrokesCount.current,
+      finalCharsTyped: finalCharsTypedRef.current,
+    };
+    const charCounts = resolveCharacterCounts(allWordResults, liveCounts);
+    const uncorrectedErrors =
+      charCounts.incorrectChars + charCounts.extraChars;
+    const correctedErrors = correctedErrorsCount.current;
+    // A correction costs at least one keystroke, and every final character was
+    // produced by one, so the denominator can never be smaller than that.
+    const totalKeystrokes = Math.max(
+      totalKeystrokesRef.current,
+      charCounts.correctChars +
+        charCounts.incorrectChars +
+        charCounts.extraChars +
+        correctedErrors
+    );
+
+    // Telemetry forwarded to persistence so weak keys and confusions survive.
+    const confusions = buildConfusions(keystrokesLogRef.current);
+    const wordErrors = buildWordErrors(allWordResults);
+
+    const payload: TelemetryPayload = {
+      durationSeconds: Math.max(1.0, duration),
+      correctChars: charCounts.correctChars,
+      incorrectChars: charCounts.incorrectChars,
+      extraChars: charCounts.extraChars,
       missedChars: missed,
       rawKeystrokesPerSecond: rawKeystrokesPerSecond.current,
+      // The same fields also go to /api/accounts/tests, so the displayed and
+      // persisted scores are computed from one identical input.
+      correctedErrors,
+      uncorrectedErrors,
+      totalKeystrokes,
+      finalCharsTyped: charCounts.finalCharsTyped,
+      keystrokesLog: keystrokesLogRef.current,
     };
 
     try {
@@ -607,7 +659,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         {
           ...result,
           wordResults: allWordResults,
-          correctedErrors: correctedErrorsCount.current,
+          correctedErrors,
+          uncorrectedErrors,
+          totalKeystrokes,
+          confusions,
+          wordErrors,
           keystrokesLog: keystrokesLogRef.current,
           startedAt: testStartedEpochMs.current || Date.now(),
         },
@@ -616,12 +672,22 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     } catch (err) {
       console.error("Analysis request failed, calculating fallback:", err);
       const totalChars =
-        correctKeystrokesCount.current +
-        incorrectKeystrokesCount.current +
-        extraKeystrokesCount.current;
+        charCounts.correctChars + charCounts.incorrectChars + charCounts.extraChars;
       const rawWpm = (totalChars / 5.0) / (payload.durationSeconds / 60.0);
-      const netWpm = (correctKeystrokesCount.current / 5.0) / (payload.durationSeconds / 60.0);
-      const acc = totalChars > 0 ? (correctKeystrokesCount.current / totalChars) * 100.0 : 100.0;
+      const netWpm = Math.min(
+        (charCounts.correctChars / 5.0) / (payload.durationSeconds / 60.0),
+        rawWpm
+      );
+      const acc =
+        totalKeystrokes > 0
+          ? Math.max(
+              0,
+              Math.min(
+                100,
+                (1 - (uncorrectedErrors + 0.5 * correctedErrors) / totalKeystrokes) * 100
+              )
+            )
+          : 100;
       onFinish(
         {
           rawWpm: Math.round(rawWpm * 10) / 10,
@@ -629,10 +695,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
           accuracy: Math.round(acc * 10) / 10,
           consistency: 90.0,
           perSecondWpm: rawKeystrokesPerSecond.current.map((k) => (k / 5.0) * 60.0),
-          correctChars: correctKeystrokesCount.current,
-          incorrectChars: incorrectKeystrokesCount.current,
-          extraChars: extraKeystrokesCount.current,
+          correctChars: charCounts.correctChars,
+          incorrectChars: charCounts.incorrectChars,
+          extraChars: charCounts.extraChars,
           missedChars: missed,
+          correctedErrors,
+          uncorrectedErrors,
+          totalKeystrokes,
+          finalCharsTyped: charCounts.finalCharsTyped,
+          confusions,
+          wordErrors,
+          keystrokesLog: keystrokesLogRef.current,
           durationSeconds: payload.durationSeconds,
           wordResults: allWordResults,
         },
@@ -777,6 +850,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     extraKeystrokesCount.current = 0;
     completedWordResults.current = [];
     recentKeyTimestamps.current = [];
+    // Telemetry state for the new run.
+    keystrokesLogRef.current = [];
+    totalKeystrokesRef.current = 0;
+    finalCharsTypedRef.current = 0;
+    correctedErrorsCount.current = 0;
 
     const initialCount = mode === "learn" ? 25 : mode === "time" ? 100 : wordsOption;
     fetchWords(initialCount, false);
@@ -1241,8 +1319,15 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     // Flight time tracking
     lastKeyTimeRef.current = now;
 
-    // Log raw keystroke event
-    keystrokesLogRef.current.push({ key: e.key, time: Date.now() });
+    // Raw keystroke event. Correctness and the expected character are filled in
+    // by the branches below, which are the only places that know the target.
+    const logEntry: KeystrokeLogEntry = { key: e.key, time: Date.now() };
+    keystrokesLogRef.current.push(logEntry);
+    if (e.key !== "Backspace" && e.key !== "Delete" && e.key.length === 1) {
+      totalKeystrokesRef.current += 1;
+    } else if (e.key === " ") {
+      totalKeystrokesRef.current += 1;
+    }
 
     // ── Velocity tracking for glow ──
     recentKeyTimestamps.current.push(now);
@@ -1314,6 +1399,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       keystrokesInCurrentSecond.current += 1;
       const isCorrect = activeInput === targetWord;
+
+      // Telemetry for the separating space: expected a space after a word the
+      // typist finished, and it counts as correct only when the word matched.
+      logEntry.expected = " ";
+      logEntry.correct = isCorrect;
 
       if (mode === "learn") {
         learnKeystrokesRef.current.push({
@@ -1488,6 +1578,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
         }
         onKeyError();
       }
+
+      // Telemetry: what was expected versus what was pressed. This is the bit
+      // the persistence layer uses to attribute errors to the target key.
+      logEntry.expected = activeInput.length < targetWord.length ? targetWord[activeInput.length] : "";
+      logEntry.correct = isCharCorrect;
+      finalCharsTypedRef.current = Math.max(finalCharsTypedRef.current, activeWordIdx);
 
       const nextInput = activeInput + char;
       if (nextInput.length <= targetWord.length + 10) {

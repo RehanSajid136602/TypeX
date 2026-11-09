@@ -192,11 +192,44 @@ export interface TelemetryPayload {
   extraChars: number;
   missedChars: number;
   rawKeystrokesPerSecond: number[];
+  // Scoring-model fields. Both /api/analyze and /api/accounts/tests receive
+  // these so the displayed and persisted scores are computed identically.
+  correctedErrors?: number;
+  uncorrectedErrors?: number;
+  totalKeystrokes?: number;
+  finalCharsTyped?: number;
+  keystrokesLog?: KeystrokeLogEntry[];
 }
 
 export interface WordResult {
   original: string;
   typed: string;
+}
+
+/**
+ * One entry in the keystroke log.
+ *
+ * `expected` and `correct` are the telemetry fields the persistence layer needs
+ * to attribute errors to the key the typist was aiming at (audit §6.4: without
+ * them `test_key_stats.errors` was always 0). They are optional so older
+ * persisted payloads keep loading.
+ */
+export interface KeystrokeLogEntry {
+  key: string;
+  time: number;
+  expected?: string;
+  correct?: boolean;
+}
+
+export interface ConfusionEntry {
+  expected: string;
+  actual: string;
+  count: number;
+}
+
+export interface WordErrorEntry {
+  word: string;
+  count: number;
 }
 
 export interface TelemetryResult {
@@ -212,9 +245,12 @@ export interface TelemetryResult {
   correctedErrors?: number;
   uncorrectedErrors?: number;
   totalKeystrokes?: number;
+  finalCharsTyped?: number;
   durationSeconds: number;
   wordResults?: WordResult[];
-  keystrokesLog?: { key: string; time: number }[];
+  keystrokesLog?: KeystrokeLogEntry[];
+  confusions?: ConfusionEntry[];
+  wordErrors?: WordErrorEntry[];
   startedAt?: number;
 }
 

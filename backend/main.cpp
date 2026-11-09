@@ -46,6 +46,7 @@ inline time_t portable_timegm(struct tm* tm) {
 #include "learning_engine.hpp"
 #include "competition_engine.hpp"
 #include "admin_pin_manager.hpp"
+#include "scoring_engine.hpp"
 #include "db_manager.hpp"
 
 using json = nlohmann::json;
@@ -745,7 +746,14 @@ int main(int argc, char** argv) {
     });
 
     // Endpoint 1: GET /api/words?tier=english_1k&count=100&mode=natural|uniform
-    svr.Get("/api/words", [&corpus](const httplib::Request& req, httplib::Response& res) {
+    //
+    // Adaptive extension (opt-in, non-breaking):
+    //   ?adaptive=1            bias the sample toward the profile's weak keys
+    //   &profileId=N           profile to read weak keys from
+    //   ?focus_keys=a,e,o      explicit focus letters (overrides the stored keys)
+    //   ?weakness_weights=...  explicit weights (accepted for compatibility)
+    // Callers that omit all of these get exactly the previous behaviour.
+    svr.Get("/api/words", [&corpus, &dbManager](const httplib::Request& req, httplib::Response& res) {
         std::string tier = kDefaultTier;
         if (req.has_param("tier")) {
             tier = req.get_param_value("tier");
@@ -788,11 +796,51 @@ int main(int argc, char** argv) {
 
         std::vector<std::string> sampled = corpus.sampleWords(effectiveTier, count, natural, initialRecent);
 
+        // ── Adaptive focus keys ──────────────────────────────────────────────
+        // Resolved after sampling so the response can report provenance.
+        std::vector<std::string> focusKeys;
+        std::string focusSource = "none";
+
+        if (req.has_param("focus_keys")) {
+            std::stringstream ss(req.get_param_value("focus_keys"));
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) focusKeys.push_back(item);
+            }
+            if (!focusKeys.empty()) focusSource = "query";
+        }
+
+        const bool wantsAdaptive =
+            (req.has_param("adaptive") && req.get_param_value("adaptive") != "0" &&
+             !req.get_param_value("adaptive").empty()) ||
+            req.has_param("weakness_weights");
+
+        if (focusKeys.empty() && wantsAdaptive) {
+            int64_t profileId = -1;
+            if (req.has_param("profileId")) {
+                try { profileId = std::stoll(req.get_param_value("profileId")); } catch (...) {}
+            }
+            if (profileId <= 0) {
+                const std::string active = dbManager.getSetting("active_profile_id", "");
+                if (!active.empty()) {
+                    try { profileId = std::stoll(active); } catch (...) {}
+                }
+            }
+            if (profileId > 0) {
+                for (const auto& wk : dbManager.getWeakKeys(profileId, 8)) {
+                    if (wk.key.size() == 1) focusKeys.push_back(wk.key);
+                }
+                if (!focusKeys.empty()) focusSource = "profile_key_stats";
+            }
+        }
+
         json response = {
             {"tier", effectiveTier},
             {"mode", natural ? "natural" : "uniform"},
             {"count", sampled.size()},
-            {"words", sampled}
+            {"words", sampled},
+            {"focusKeys", focusKeys},
+            {"focusSource", focusSource}
         };
 
         res.set_header("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -811,6 +859,10 @@ int main(int argc, char** argv) {
     });
 
     // Endpoint 2: POST /api/analyze
+    //
+    // Displayed score. Uses the shared scoring model in scoring_engine.hpp, the
+    // same one POST /api/accounts/tests uses, so the number on screen and the
+    // number in the database can never disagree.
     svr.Post("/api/analyze", [](const httplib::Request& req, httplib::Response& res) {
         try {
             auto payload = json::parse(req.body);
@@ -818,131 +870,90 @@ int main(int argc, char** argv) {
             double durationSeconds = payload.value("durationSeconds", 30.0);
             if (durationSeconds <= 0.0) durationSeconds = 1.0;
 
-            int correctChars = payload.value("correctChars", 0);
-            int incorrectChars = payload.value("incorrectChars", 0);
-            int extraChars = payload.value("extraChars", 0);
-            int missedChars = payload.value("missedChars", 0);
+            typex::scoring::ScoringInput in;
+            in.durationSeconds = durationSeconds;
+            in.correctChars = payload.value("correctChars", 0);
+            in.incorrectChars = payload.value("incorrectChars", 0);
+            in.extraChars = payload.value("extraChars", 0);
+            in.correctedErrors = payload.value("correctedErrors", 0);
+            in.totalKeystrokes = payload.value("totalKeystrokes", 0);
+            in.finalCharsTyped = payload.value("finalCharsTyped", 0);
+            // -1 means "derive from the final text": the wire value is only a
+            // hint and is clamped inside the scorer.
+            in.uncorrectedErrors = payload.value("uncorrectedErrors", -1);
 
-            std::vector<double> rawKeystrokesPerSecond;
+            const int missedChars = payload.value("missedChars", 0);
+
+            // When the client sends per-word results, the final text is the
+            // authority for the character counters. Recomputing them here means
+            // a legacy client that posts cumulative retype counts still cannot
+            // inflate Net WPM (audit §6.2).
+            if (payload.contains("wordResults") && payload["wordResults"].is_array()) {
+                std::vector<typex::scoring::WordOutcome> outcomes;
+                for (const auto& wr : payload["wordResults"]) {
+                    typex::scoring::WordOutcome wo;
+                    wo.target = wr.value("original", "");
+                    wo.typed = wr.value("typed", "");
+                    if (!wo.target.empty()) outcomes.push_back(wo);
+                }
+                if (!outcomes.empty()) {
+                    const auto counts = typex::scoring::countFinalTextWithSpaces(outcomes);
+                    in.correctChars = counts.correctChars;
+                    in.incorrectChars = counts.incorrectChars;
+                    in.extraChars = counts.extraChars;
+                    in.finalCharsTyped = counts.finalCharsTyped;
+                    in.uncorrectedErrors = counts.mismatchedChars;
+                }
+            }
+
             if (payload.contains("rawKeystrokesPerSecond") && payload["rawKeystrokesPerSecond"].is_array()) {
                 for (const auto& item : payload["rawKeystrokesPerSecond"]) {
                     if (item.is_number()) {
-                        rawKeystrokesPerSecond.push_back(item.get<double>());
+                        in.rawKeystrokesPerSecond.push_back(item.get<double>());
                     }
                 }
             }
 
-            // Net WPM: (correct characters / 5) / elapsed minutes
-            // Raw WPM: (all typed characters / 5) / elapsed minutes
-            double totalTypedChars = correctChars + incorrectChars + extraChars;
-            double rawWpm = (totalTypedChars / 5.0) / (durationSeconds / 60.0);
-            double netWpm = (correctChars / 5.0) / (durationSeconds / 60.0);
-
-            // Partial accuracy recovery calculation:
-            // total_keystrokes = all character keystrokes (wrong, right, retyped)
-            // uncorrected_errors = wrong or extra characters still in final text (incorrectChars + extraChars)
-            // corrected_errors = wrong keystrokes later deleted and replaced
-            // CORRECTION_PENALTY = 0.5
-            // accuracy = max(0, 1 - (uncorrected_errors + CORRECTION_PENALTY * corrected_errors) / total_keystrokes) * 100
-            constexpr double CORRECTION_PENALTY = 0.5;
-            int uncorrectedErrors = incorrectChars + extraChars;
-            int clientCorrectedErrors = payload.value("correctedErrors", 0);
-            int clientTotalKeystrokes = payload.value("totalKeystrokes", 0);
-
-            if (payload.contains("keystrokesLog") && payload["keystrokesLog"].is_array()) {
-                int charKeys = 0;
-                for (const auto& entry : payload["keystrokesLog"]) {
-                    std::string k = entry.value("key", "");
-                    if (k.size() == 1 || k == "Space") {
-                        charKeys++;
-                    }
-                }
-                if (charKeys > 0) {
-                    clientTotalKeystrokes = charKeys;
-                }
-            }
-
-            int totalKeystrokes = std::max(static_cast<int>(totalTypedChars), clientTotalKeystrokes);
-            int correctedErrors = std::max(0, clientCorrectedErrors);
-
-            if (totalKeystrokes < uncorrectedErrors + correctedErrors + correctChars) {
-                totalKeystrokes = uncorrectedErrors + correctedErrors + correctChars;
-            }
-
-            double accuracy = 100.0;
-            if (totalKeystrokes > 0) {
-                double penalty = uncorrectedErrors + (CORRECTION_PENALTY * correctedErrors);
-                accuracy = std::max(0.0, 1.0 - (penalty / totalKeystrokes)) * 100.0;
-            } else if (totalTypedChars > 0) {
-                accuracy = (static_cast<double>(correctChars) / totalTypedChars) * 100.0;
-            }
-            accuracy = std::clamp(accuracy, 0.0, 100.0);
-
-            // Consistency calculation: stddev and mean of rawKeystrokesPerSecond
-            // clamp(100.0 - ((stddev / mean) * 100.0), 0.0, 100.0)
-            double consistency = 100.0;
-            if (!rawKeystrokesPerSecond.empty()) {
-                double sum = std::accumulate(rawKeystrokesPerSecond.begin(), rawKeystrokesPerSecond.end(), 0.0);
-                double mean = sum / rawKeystrokesPerSecond.size();
-
-                if (mean > 0.0001) {
-                    double varianceSum = 0.0;
-                    for (double val : rawKeystrokesPerSecond) {
-                        varianceSum += (val - mean) * (val - mean);
-                    }
-                    double stddev = std::sqrt(varianceSum / rawKeystrokesPerSecond.size());
-                    double cv = (stddev / mean) * 100.0;
-                    consistency = std::clamp(100.0 - cv, 0.0, 100.0);
-                } else {
-                    consistency = 0.0;
-                }
-            }
+            const typex::scoring::ScoringResult scored = typex::scoring::computeScore(in);
 
             // Smoothed perSecondWpm array for the frontend graph
             std::vector<double> perSecondWpm;
-            perSecondWpm.reserve(rawKeystrokesPerSecond.size());
-            if (!rawKeystrokesPerSecond.empty()) {
-                // First calculate instantaneous WPM for each second: (keystrokes / 5.0) * 60.0
-                std::vector<double> instantWpm;
-                instantWpm.reserve(rawKeystrokesPerSecond.size());
-                for (double ks : rawKeystrokesPerSecond) {
-                    instantWpm.push_back((ks / 5.0) * 60.0);
+            perSecondWpm.reserve(in.rawKeystrokesPerSecond.size());
+            for (double ks : in.rawKeystrokesPerSecond) {
+                const double instant = (ks / 5.0) * 60.0;
+                perSecondWpm.push_back(std::round(instant * 10.0) / 10.0);
+            }
+            if (!perSecondWpm.empty()) {
+                std::vector<double> smoothed;
+                smoothed.reserve(perSecondWpm.size());
+                for (size_t i = 0; i < perSecondWpm.size(); ++i) {
+                    const double prev = (i > 0) ? perSecondWpm[i - 1] : perSecondWpm[i];
+                    const double curr = perSecondWpm[i];
+                    const double next = (i + 1 < perSecondWpm.size()) ? perSecondWpm[i + 1] : perSecondWpm[i];
+                    const double s = 0.2 * prev + 0.6 * curr + 0.2 * next;
+                    smoothed.push_back(std::round(s * 10.0) / 10.0);
                 }
-
-                // Apply a 3-point smoothing kernel [0.2, 0.6, 0.2]
-                for (size_t i = 0; i < instantWpm.size(); ++i) {
-                    double prev = (i > 0) ? instantWpm[i - 1] : instantWpm[i];
-                    double curr = instantWpm[i];
-                    double next = (i + 1 < instantWpm.size()) ? instantWpm[i + 1] : instantWpm[i];
-                    double smoothed = 0.2 * prev + 0.6 * curr + 0.2 * next;
-                    // Round to 1 decimal place
-                    smoothed = std::round(smoothed * 10.0) / 10.0;
-                    perSecondWpm.push_back(smoothed);
-                }
+                perSecondWpm = std::move(smoothed);
             }
 
-            // Round values cleanly
-            rawWpm = std::round(rawWpm * 10.0) / 10.0;
-            netWpm = std::round(netWpm * 10.0) / 10.0;
-            accuracy = std::round(accuracy * 10.0) / 10.0;
-            consistency = std::round(consistency * 10.0) / 10.0;
-
             json response = {
-                {"rawWpm", rawWpm},
-                {"netWpm", netWpm},
-                {"accuracy", accuracy},
-                {"consistency", consistency},
+                {"rawWpm", std::round(scored.rawWpm * 10.0) / 10.0},
+                {"netWpm", std::round(scored.netWpm * 10.0) / 10.0},
+                {"accuracy", std::round(scored.accuracy * 10.0) / 10.0},
+                {"consistency", std::round(scored.consistency * 10.0) / 10.0},
                 {"perSecondWpm", perSecondWpm},
-                {"correctChars", correctChars},
-                {"incorrectChars", incorrectChars},
-                {"extraChars", extraChars},
+                {"correctChars", scored.correctChars},
+                {"incorrectChars", scored.incorrectChars},
+                {"extraChars", scored.extraChars},
                 {"missedChars", missedChars},
-                {"correctedErrors", correctedErrors},
-                {"totalKeystrokes", totalKeystrokes},
+                {"correctedErrors", scored.correctedErrors},
+                {"uncorrectedErrors", scored.uncorrectedErrors},
+                {"totalKeystrokes", scored.totalKeystrokes},
                 {"durationSeconds", durationSeconds}
             };
 
             res.set_content(response.dump(), "application/json");
+
         } catch (const std::exception& e) {
             json err = {
                 {"error", "Failed to parse analyze payload"},
@@ -1265,7 +1276,10 @@ int main(int argc, char** argv) {
             if ((testMode == "time" || testMode == "words") && !testTier.empty() && payload.contains("wordResults") && payload["wordResults"].is_array()) {
                 for (const auto& wr : payload["wordResults"]) {
                     std::string orig = wr.value("original", "");
-                    if (!orig.empty() && !corpus.isWordInTier(testTier, orig)) {
+                    // A bare space is the separator between words, not a corpus
+                    // word, so it is never checked against the tier.
+                    if (orig.empty() || orig == " ") continue;
+                    if (!corpus.isWordInTier(testTier, orig)) {
                         res.status = 400;
                         res.set_content("{\"error\":\"Target text contains words outside the selected corpus tier.\"}", "application/json");
                         return;
@@ -1283,144 +1297,163 @@ int main(int argc, char** argv) {
                 return;
             }
 
-            int correctChars = payload.value("correctChars", 0);
-            int incorrectChars = payload.value("incorrectChars", 0);
-            int extraChars = payload.value("extraChars", 0);
-            int uncorrectedErrors = incorrectChars + extraChars;
-            int clientCorrected = payload.value("correctedErrors", 0);
-            int clientTotalKs = payload.value("totalKeystrokes", 0);
+            typex::scoring::ScoringInput in;
+            in.durationSeconds = durationSeconds;
+            in.correctChars = payload.value("correctChars", 0);
+            in.incorrectChars = payload.value("incorrectChars", 0);
+            in.extraChars = payload.value("extraChars", 0);
+            in.correctedErrors = payload.value("correctedErrors", 0);
+            in.totalKeystrokes = payload.value("totalKeystrokes", 0);
+            in.finalCharsTyped = payload.value("finalCharsTyped", 0);
+            in.uncorrectedErrors = payload.value("uncorrectedErrors", -1);
 
-            // Recompute authoritative keystrokes from keystrokesLog if available
-            std::vector<typex::DatabaseManager::SaveTestRecord::KeyStat> keyStats;
-            std::unordered_map<std::string, typex::DatabaseManager::SaveTestRecord::KeyStat> keyMap;
-            std::vector<typex::DatabaseManager::SaveTestRecord::Confusion> confusions;
-            std::unordered_map<std::string, int> confMap;
-            std::vector<typex::DatabaseManager::SaveTestRecord::WordError> wordErrors;
-
-            int logKeyCount = 0;
-            int logKeystrokes = 0;
-            int logCorrected = 0;
+            // ── Telemetry: per-key stats, confusions, word errors ──────────────
+            // Derived from the keystroke log whenever the client supplies
+            // per-keystroke `expected` / `correct` fields, so errors can no
+            // longer collapse to zero in test_key_stats.
+            std::vector<typex::scoring::LogEntry> logEntries;
+            bool logHasCorrectness = false;
 
             if (payload.contains("keystrokesLog") && payload["keystrokesLog"].is_array()) {
-                int64_t prevTime = 0;
                 for (const auto& entry : payload["keystrokesLog"]) {
-                    std::string k = entry.value("key", "");
-                    int64_t t = entry.value("time", (int64_t)0);
-                    if (k == "Backspace") {
-                        logCorrected++;
-                    } else if (k.size() == 1 || k == "Space") {
-                        logKeyCount++;
-                        logKeystrokes++;
-                        int flight = 0;
-                        if (prevTime > 0 && t > prevTime) {
-                            flight = std::clamp(static_cast<int>(t - prevTime), 10, 1500);
-                        }
-                        prevTime = t;
-
-                        std::string normalizedKey = (k == "Space") ? " " : k;
-                        auto& ks = keyMap[normalizedKey];
-                        ks.key = normalizedKey;
-                        ks.attempts++;
-                        if (flight > 0) {
-                            ks.flightMsSum += flight;
-                            ks.flightN++;
-                        }
+                    typex::scoring::LogEntry le;
+                    le.key = entry.value("key", "");
+                    le.time = entry.value("time", (int64_t)0);
+                    if (entry.contains("expected") && entry["expected"].is_string()) {
+                        le.expected = entry["expected"].get<std::string>();
                     }
-                }
-
-                // If keystrokesLog is provided, recompute authoritative characters:
-                if (logKeystrokes > 0) {
-                    clientCorrected = std::max(clientCorrected, logCorrected);
-                    int maxPossibleCorrect = std::max(0, logKeystrokes - clientCorrected);
-                    if (correctChars > maxPossibleCorrect || correctChars == 0) {
-                        correctChars = maxPossibleCorrect;
+                    if (entry.contains("correct") && entry["correct"].is_boolean()) {
+                        le.hasCorrectFlag = true;
+                        le.correct = entry["correct"].get<bool>();
+                        logHasCorrectness = true;
                     }
+                    if (!le.key.empty()) logEntries.push_back(le);
                 }
             }
 
-            int totalKeystrokes = std::max({
-                static_cast<int>(correctChars + incorrectChars + extraChars + clientCorrected),
-                clientTotalKs,
-                logKeyCount
-            });
-
-            // Single shared accuracy function: partial credit for corrected errors (penalty = 0.5)
-            constexpr double CORRECTION_PENALTY = 0.5;
-            double accuracy = 100.0;
-            if (totalKeystrokes > 0) {
-                double penalty = uncorrectedErrors + (CORRECTION_PENALTY * clientCorrected);
-                accuracy = std::clamp((1.0 - (penalty / totalKeystrokes)) * 100.0, 0.0, 100.0);
+            // Word-level ground truth from the client, when it sends it.
+            std::vector<typex::scoring::WordOutcome> wordOutcomes;
+            if (payload.contains("wordResults") && payload["wordResults"].is_array()) {
+                for (const auto& wr : payload["wordResults"]) {
+                    typex::scoring::WordOutcome wo;
+                    wo.target = wr.value("original", "");
+                    wo.typed = wr.value("typed", "");
+                    if (!wo.target.empty()) wordOutcomes.push_back(wo);
+                }
             }
 
-            double durationMinutes = durationSeconds / 60.0;
-            if (durationMinutes <= 0.0) durationMinutes = 1.0 / 60.0;
-            double rawWpm = ((correctChars + incorrectChars + extraChars) / 5.0) / durationMinutes;
-            double netWpm = (correctChars / 5.0) / durationMinutes;
+            // The final text is the authority for the character counters. When
+            // the client sends per-word results we recompute them here instead
+            // of trusting cumulative counters, which is what made retypes
+            // inflate Net WPM by up to 50%.
+            if (!wordOutcomes.empty()) {
+                const auto counts = typex::scoring::countFinalTextWithSpaces(wordOutcomes);
+                in.correctChars = counts.correctChars;
+                in.incorrectChars = counts.incorrectChars;
+                in.extraChars = counts.extraChars;
+                in.finalCharsTyped = counts.finalCharsTyped;
+                // Anything wrong in the final text is by definition uncorrected.
+                in.uncorrectedErrors = counts.mismatchedChars;
+            }
+
+            std::unordered_map<std::string, typex::DatabaseManager::SaveTestRecord::KeyStat> keyMap;
+            std::vector<typex::DatabaseManager::SaveTestRecord::Confusion> confusions;
+            std::vector<typex::DatabaseManager::SaveTestRecord::WordError> wordErrors;
+
+            if (logHasCorrectness) {
+                const auto tel = typex::scoring::aggregateKeystrokes(logEntries);
+                for (const auto& ks : tel.keyStats) {
+                    typex::DatabaseManager::SaveTestRecord::KeyStat rec;
+                    rec.key = ks.key;
+                    rec.attempts = ks.attempts;
+                    rec.errors = ks.errors;
+                    rec.flightMsSum = ks.flightMsSum;
+                    rec.flightN = ks.flightN;
+                    keyMap[rec.key] = rec;
+                }
+                for (const auto& c : tel.confusions) {
+                    confusions.push_back({std::get<0>(c), std::get<1>(c), std::get<2>(c)});
+                }
+            } else if (!logEntries.empty()) {
+                // Legacy clients send {key, time} only: no correctness bit means
+                // no per-key error attribution, but attempts and flight times
+                // are still accumulated so analytics keep working.
+                int64_t prevTime = 0;
+                for (const auto& le : logEntries) {
+                    if (le.key == "Backspace" || le.key == "Delete") continue;
+                    const std::string normalized = typex::scoring::normalizeKeyName(le.key);
+                    auto& ks = keyMap[normalized];
+                    ks.key = normalized;
+                    ks.attempts++;
+                    if (prevTime > 0 && le.time > prevTime) {
+                        const int flight = std::clamp(static_cast<int>(le.time - prevTime), 10, 1500);
+                        ks.flightMsSum += flight;
+                        ks.flightN++;
+                    }
+                    if (le.time > 0) prevTime = le.time;
+                }
+            }
+
+            // Client-supplied telemetry takes precedence when present, so older
+            // and newer payload shapes both land in the database.
+            if (payload.contains("confusions") && payload["confusions"].is_array()) {
+                std::unordered_map<std::string, int> merged;
+                for (const auto& cf : confusions) {
+                    merged[cf.expected + "\x1f" + cf.typed] += cf.count;
+                }
+                for (const auto& cf : payload["confusions"]) {
+                    const std::string exp = cf.value("expected", cf.value("expectedKey", ""));
+                    const std::string typ = cf.value("typed", cf.value("actualKey", ""));
+                    const int cnt = cf.value("count", 1);
+                    if (!exp.empty() && !typ.empty() && cnt > 0) {
+                        merged[exp + "\x1f" + typ] += cnt;
+                    }
+                }
+                confusions.clear();
+                for (const auto& kv : merged) {
+                    const size_t sep = kv.first.find('\x1f');
+                    if (sep == std::string::npos) continue;
+                    confusions.push_back({kv.first.substr(0, sep), kv.first.substr(sep + 1), kv.second});
+                }
+                std::sort(confusions.begin(), confusions.end(),
+                          [](const auto& a, const auto& b) {
+                              return a.expected == b.expected ? a.typed < b.typed : a.expected < b.expected;
+                          });
+            }
+
+            if (payload.contains("wordErrors") && payload["wordErrors"].is_array()) {
+                std::unordered_map<std::string, int> merged;
+                for (const auto& we : payload["wordErrors"]) {
+                    const std::string w = we.value("word", "");
+                    const int cnt = we.value("count", we.value("errorCount", 1));
+                    if (!w.empty() && cnt > 0) merged[w] += cnt;
+                }
+                for (const auto& kv : merged) {
+                    wordErrors.push_back({kv.first, kv.second});
+                }
+                std::sort(wordErrors.begin(), wordErrors.end(),
+                          [](const auto& a, const auto& b) { return a.word < b.word; });
+            } else if (!wordOutcomes.empty()) {
+                for (const auto& we : typex::scoring::wordErrorsFromOutcomes(wordOutcomes)) {
+                    wordErrors.push_back({we.first, we.second});
+                }
+            }
+
+            const typex::scoring::ScoringResult scored = typex::scoring::computeScore(in);
 
             // Reject forged speed claims
-            if (netWpm > 320.0 || rawWpm > 350.0) {
+            if (scored.implausible) {
                 res.status = 400;
                 res.set_content("{\"error\":\"Implausible typing speed.\"}", "application/json");
                 return;
             }
 
-            // Consistency
-            std::vector<double> rawKeystrokesPerSecond;
-            if (payload.contains("rawKeystrokesPerSecond") && payload["rawKeystrokesPerSecond"].is_array()) {
-                for (const auto& item : payload["rawKeystrokesPerSecond"]) {
-                    if (item.is_number()) rawKeystrokesPerSecond.push_back(item.get<double>());
-                }
-            }
-            double consistency = 100.0;
-            if (!rawKeystrokesPerSecond.empty()) {
-                double sum = std::accumulate(rawKeystrokesPerSecond.begin(), rawKeystrokesPerSecond.end(), 0.0);
-                double mean = sum / rawKeystrokesPerSecond.size();
-                if (mean > 0.0001) {
-                    double varSum = 0.0;
-                    for (double val : rawKeystrokesPerSecond) {
-                        varSum += (val - mean) * (val - mean);
-                    }
-                    double stddev = std::sqrt(varSum / rawKeystrokesPerSecond.size());
-                    double cv = (stddev / mean) * 100.0;
-                    consistency = std::clamp(100.0 - cv, 0.0, 100.0);
-                } else {
-                    consistency = 0.0;
-                }
-            }
+            // Confusions and word errors were already merged above (from the
+            // keystroke log and from any client-supplied telemetry), so there is
+            // nothing left to aggregate here.
 
-            // Process confusions payload
-            if (payload.contains("confusions") && payload["confusions"].is_array()) {
-                for (const auto& cf : payload["confusions"]) {
-                    std::string exp = cf.value("expected", "");
-                    std::string typ = cf.value("typed", "");
-                    int cnt = cf.value("count", 1);
-                    if (!exp.empty() && !typ.empty()) {
-                        confMap[exp + "->" + typ] += cnt;
-                    }
-                }
-            }
-            for (const auto& kv : confMap) {
-                auto delim = kv.first.find("->");
-                if (delim != std::string::npos) {
-                    confusions.push_back({
-                        kv.first.substr(0, delim),
-                        kv.first.substr(delim + 2),
-                        kv.second
-                    });
-                }
-            }
-
-            // Process word errors payload
-            if (payload.contains("wordErrors") && payload["wordErrors"].is_array()) {
-                for (const auto& we : payload["wordErrors"]) {
-                    std::string w = we.value("word", "");
-                    int cnt = we.value("count", 1);
-                    if (!w.empty()) {
-                        wordErrors.push_back({w, cnt});
-                    }
-                }
-            }
-
+            std::vector<typex::DatabaseManager::SaveTestRecord::KeyStat> keyStats;
+            keyStats.reserve(keyMap.size());
             for (const auto& kv : keyMap) {
                 keyStats.push_back(kv.second);
             }
@@ -1433,16 +1466,16 @@ int main(int argc, char** argv) {
             rec.mode = payload.value("mode", "time");
             rec.config = payload.value("config", json::object());
             rec.durationMs = static_cast<int64_t>(durationSeconds * 1000.0);
-            rec.netWpm = std::round(netWpm * 10.0) / 10.0;
-            rec.rawWpm = std::round(rawWpm * 10.0) / 10.0;
-            rec.accuracy = std::round(accuracy * 10.0) / 10.0;
-            rec.consistency = std::round(consistency * 10.0) / 10.0;
-            rec.correctChars = correctChars;
-            rec.incorrectChars = incorrectChars;
-            rec.extraChars = extraChars;
-            rec.uncorrectedErrors = uncorrectedErrors;
-            rec.correctedErrors = clientCorrected;
-            rec.totalKeystrokes = totalKeystrokes;
+            rec.netWpm = std::round(scored.netWpm * 10.0) / 10.0;
+            rec.rawWpm = std::round(scored.rawWpm * 10.0) / 10.0;
+            rec.accuracy = std::round(scored.accuracy * 10.0) / 10.0;
+            rec.consistency = std::round(scored.consistency * 10.0) / 10.0;
+            rec.correctChars = scored.correctChars;
+            rec.incorrectChars = scored.incorrectChars;
+            rec.extraChars = scored.extraChars;
+            rec.uncorrectedErrors = scored.uncorrectedErrors;
+            rec.correctedErrors = scored.correctedErrors;
+            rec.totalKeystrokes = scored.totalKeystrokes;
             rec.perSecondWpm = payload.value("perSecondWpm", json::array());
             rec.appVersion = "1.0.0";
             rec.keyStats = std::move(keyStats);
