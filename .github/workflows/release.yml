@@ -160,9 +160,10 @@ jobs:
           pnpm pkg get version
 
       - name: Install desktop dependencies
-        # electron-builder resolves buildResources from build/buildResourcesDir;
-        # the NSIS customisation include lives in packaging/windows and is copied
-        # here because the repository-wide "build/" ignore rule excludes desktop/build.
+        # electron-builder resolves nsis.include="build/installer.nsh" against
+        # buildResources (desktop/build). Keep that file tracked next to main.js and
+        # re-create it here, because the repository-wide "build/" rule in .gitignore
+        # would otherwise exclude a desktop/build/ copy from the checkout.
         shell: bash
         run: |
           mkdir -p desktop/build
